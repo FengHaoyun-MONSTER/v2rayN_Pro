@@ -2,6 +2,8 @@ using System.Net.Http.Headers;
 
 namespace ServiceLib.Services;
 
+public sealed record DownloadStringResult(string Content, IReadOnlyDictionary<string, string> Headers);
+
 /// <summary>
 /// Download
 /// </summary>
@@ -98,21 +100,38 @@ public class DownloadService
     /// <summary>
     /// Tries to download string content using proxy switch setting.
     /// </summary>
-    public async Task<string?> TryDownloadString(string url, bool blProxy, string userAgent)
+    public async Task<string?> TryDownloadString(string url, bool blProxy, string userAgent, IReadOnlyDictionary<string, string>? headers = null)
     {
         var webProxy = await GetWebProxy(blProxy);
-        return await TryDownloadString(url, webProxy, userAgent);
+        return await TryDownloadString(url, webProxy, userAgent, headers);
     }
 
     /// <summary>
     /// Tries to download string content with a specified proxy.
     /// </summary>
-    public async Task<string?> TryDownloadString(string url, IWebProxy? webProxy, string userAgent)
+    public async Task<string?> TryDownloadString(string url, IWebProxy? webProxy, string userAgent, IReadOnlyDictionary<string, string>? headers = null)
+    {
+        return (await TryDownloadStringWithHeaders(url, webProxy, userAgent, headers))?.Content;
+    }
+
+    /// <summary>
+    /// Tries to download string content and preserves response headers.
+    /// </summary>
+    public async Task<DownloadStringResult?> TryDownloadStringWithHeaders(string url, bool blProxy, string userAgent, IReadOnlyDictionary<string, string>? headers = null)
+    {
+        var webProxy = await GetWebProxy(blProxy);
+        return await TryDownloadStringWithHeaders(url, webProxy, userAgent, headers);
+    }
+
+    /// <summary>
+    /// Tries to download string content and preserves response headers with a specified proxy.
+    /// </summary>
+    public async Task<DownloadStringResult?> TryDownloadStringWithHeaders(string url, IWebProxy? webProxy, string userAgent, IReadOnlyDictionary<string, string>? headers = null)
     {
         try
         {
-            var result1 = await DownloadStringAsync(url, webProxy, userAgent, 15);
-            if (result1.IsNotEmpty())
+            var result1 = await DownloadStringAsync(url, webProxy, userAgent, 15, headers);
+            if (result1?.Content.IsNotEmpty() == true)
             {
                 return result1;
             }
@@ -129,10 +148,10 @@ public class DownloadService
 
         try
         {
-            var result2 = await DownloadStringViaDownloader(url, webProxy, userAgent, 15);
+            var result2 = await DownloadStringViaDownloader(url, webProxy, userAgent, 15, headers);
             if (result2.IsNotEmpty())
             {
-                return result2;
+                return new DownloadStringResult(result2, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
             }
         }
         catch (Exception ex)
@@ -151,11 +170,11 @@ public class DownloadService
     /// <summary>
     /// Downloads string content via HttpClient.
     /// </summary>
-    private async Task<string?> DownloadStringAsync(string url, IWebProxy? webProxy, string userAgent, int timeout)
+    private async Task<DownloadStringResult?> DownloadStringAsync(string url, IWebProxy? webProxy, string userAgent, int timeout, IReadOnlyDictionary<string, string>? headers)
     {
         try
         {
-            var client = new HttpClient(new SocketsHttpHandler()
+            using var client = new HttpClient(new SocketsHttpHandler()
             {
                 Proxy = webProxy,
                 UseProxy = webProxy != null
@@ -166,6 +185,7 @@ public class DownloadService
                 userAgent = Utils.GetVersion(false);
             }
             client.DefaultRequestHeaders.UserAgent.TryParseAdd(userAgent);
+            AddRequestHeaders(client, headers);
 
             Uri uri = new(url);
             //Authorization Header
@@ -175,8 +195,20 @@ public class DownloadService
             }
 
             using var cts = new CancellationTokenSource();
-            var result = await client.GetStringAsync(url, cts.Token).WaitAsync(TimeSpan.FromSeconds(timeout), cts.Token);
-            return result;
+            using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cts.Token)
+                .WaitAsync(TimeSpan.FromSeconds(timeout), cts.Token);
+            response.EnsureSuccessStatusCode();
+
+            var content = await response.Content.ReadAsStringAsync(cts.Token);
+            var responseHeaders = response.Headers
+                .Concat(response.Content.Headers)
+                .GroupBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => string.Join(",", group.SelectMany(item => item.Value)),
+                    StringComparer.OrdinalIgnoreCase);
+
+            return new DownloadStringResult(content, responseHeaders);
         }
         catch (Exception ex)
         {
@@ -193,7 +225,7 @@ public class DownloadService
     /// <summary>
     /// Downloads string content via DownloaderHelper.
     /// </summary>
-    private async Task<string?> DownloadStringViaDownloader(string url, IWebProxy? webProxy, string userAgent, int timeout)
+    private async Task<string?> DownloadStringViaDownloader(string url, IWebProxy? webProxy, string userAgent, int timeout, IReadOnlyDictionary<string, string>? headers)
     {
         try
         {
@@ -201,7 +233,7 @@ public class DownloadService
             {
                 userAgent = Utils.GetVersion(false);
             }
-            var result = await DownloaderHelper.Instance.DownloadStringAsync(webProxy, url, userAgent, timeout);
+            var result = await DownloaderHelper.Instance.DownloadStringAsync(webProxy, url, userAgent, timeout, headers);
             return result;
         }
         catch (Exception ex)
@@ -214,6 +246,24 @@ public class DownloadService
             }
         }
         return null;
+    }
+
+    private static void AddRequestHeaders(HttpClient client, IReadOnlyDictionary<string, string>? headers)
+    {
+        if (headers is null)
+        {
+            return;
+        }
+
+        foreach (var item in headers)
+        {
+            if (item.Key.IsNullOrEmpty() || item.Value.IsNullOrEmpty())
+            {
+                continue;
+            }
+
+            client.DefaultRequestHeaders.TryAddWithoutValidation(item.Key, item.Value);
+        }
     }
 
     /// <summary>

@@ -18,6 +18,8 @@ public partial class ProfilesView
         lstGroup.MaxHeight = Math.Floor(SystemParameters.WorkArea.Height * 0.20 / 40) * 40;
 
         _config = AppManager.Instance.Config;
+        btnShowSubscriptionDashboard.Click += (_, _) => AppEvents.SubscriptionDashboardVisibilityChanged.Publish(true);
+        UpdateSubscriptionDashboardButton(_config.UiItem.ShowSubscriptionDashboard);
 
         btnAutofitColumnWidth.Click += BtnAutofitColumnWidth_Click;
         txtServerFilter.PreviewKeyDown += TxtServerFilter_PreviewKeyDown;
@@ -55,6 +57,9 @@ public partial class ProfilesView
             this.BindCommand(ViewModel, vm => vm.CopyServerCmd, v => v.menuCopyServer).DisposeWith(disposables);
             this.BindCommand(ViewModel, vm => vm.SetDefaultServerCmd, v => v.menuSetDefaultServer).DisposeWith(disposables);
             this.BindCommand(ViewModel, vm => vm.ShareServerCmd, v => v.menuShareServer).DisposeWith(disposables);
+            this.BindCommand(ViewModel, vm => vm.GenerateCloudflareBestNodesCmd, v => v.menuGenerateCloudflareBestNodes).DisposeWith(disposables);
+            this.OneWayBind(ViewModel, vm => vm.CanShowCloudflareBestNodeMenu, v => v.menuGenerateCloudflareBestNodes.Visibility).DisposeWith(disposables);
+            this.OneWayBind(ViewModel, vm => vm.CloudflareBestNodeMenuHeader, v => v.menuGenerateCloudflareBestNodes.Header).DisposeWith(disposables);
             this.BindCommand(ViewModel, vm => vm.GenGroupAllServerCmd, v => v.menuGenGroupAllServer).DisposeWith(disposables);
             this.BindCommand(ViewModel, vm => vm.GenGroupRegionServerCmd, v => v.menuGenGroupRegionServer).DisposeWith(disposables);
 
@@ -94,6 +99,12 @@ public partial class ProfilesView
                 .AsObservable()
                 .ObserveOn(RxSchedulers.MainThreadScheduler)
                 .Subscribe(_ => AutofitColumnWidth())
+                .DisposeWith(disposables);
+
+            AppEvents.SubscriptionDashboardVisibilityChanged
+                .AsObservable()
+                .ObserveOn(RxSchedulers.MainThreadScheduler)
+                .Subscribe(UpdateSubscriptionDashboardButton)
                 .DisposeWith(disposables);
         });
 
@@ -382,17 +393,39 @@ public partial class ProfilesView
                         {
                             item2.Visibility = _config.GuiItem.EnableStatistics ? Visibility.Visible : Visibility.Hidden;
                         }
-                        if (item.Name.Equals("IpInfo", StringComparison.CurrentCultureIgnoreCase))
-                        {
-                            item2.Visibility = _config.SpeedTestItem.IPAPIUrl.IsNotEmpty() ? Visibility.Visible : Visibility.Hidden;
-                        }
                     }
                 }
             }
+            EnsureCountryColumnVisibleAfterAddress();
         }
         catch (Exception ex)
         {
             Logging.SaveLog(_tag, ex);
+        }
+    }
+
+    private void UpdateSubscriptionDashboardButton(bool dashboardVisible)
+    {
+        btnShowSubscriptionDashboard.Visibility = _config.UiItem.MainGirdOrientation == EGirdOrientation.Vertical && !dashboardVisible
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void EnsureCountryColumnVisibleAfterAddress()
+    {
+        var columns = lstProfiles.Columns.Cast<MyDGTextColumn>().ToList();
+        var addressColumn = columns.FirstOrDefault(it => string.Equals(it.ExName, "Address", StringComparison.CurrentCultureIgnoreCase));
+        var countryColumn = columns.FirstOrDefault(it => string.Equals(it.ExName, "IpInfo", StringComparison.CurrentCultureIgnoreCase));
+        if (countryColumn == null)
+        {
+            return;
+        }
+
+        countryColumn.Visibility = Visibility.Visible;
+        var displayIndex = Math.Clamp((addressColumn?.DisplayIndex ?? 0) + 1, 0, lstProfiles.Columns.Count - 1);
+        if (countryColumn.DisplayIndex != displayIndex)
+        {
+            countryColumn.DisplayIndex = displayIndex;
         }
     }
 

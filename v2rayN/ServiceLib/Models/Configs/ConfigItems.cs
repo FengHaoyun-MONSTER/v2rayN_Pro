@@ -80,7 +80,7 @@ public class GUIItem
 public class MsgUIItem
 {
     public string? MainMsgFilter { get; set; }
-    public bool? AutoRefresh { get; set; }
+    public bool? AutoRefresh { get; set; } = false;
 }
 
 [Serializable]
@@ -90,6 +90,7 @@ public class UIItem
     public int MainGirdHeight1 { get; set; }
     public int MainGirdHeight2 { get; set; }
     public EGirdOrientation MainGirdOrientation { get; set; } = EGirdOrientation.Vertical;
+    public bool ShowSubscriptionDashboard { get; set; } = true;
     public string? ColorPrimaryName { get; set; }
     public string? CurrentTheme { get; set; }
     public string CurrentLanguage { get; set; }

@@ -8,6 +8,8 @@ public class SubItem
 
     public string Remarks { get; set; }
 
+    public bool AutoRemarks { get; set; }
+
     public string Url { get; set; }
 
     public string MoreUrl { get; set; }
@@ -23,6 +25,20 @@ public class SubItem
     public int AutoUpdateInterval { get; set; }
 
     public long UpdateTime { get; set; }
+
+    public long TrafficUpload { get; set; }
+
+    public long TrafficDownload { get; set; }
+
+    public long TrafficTotal { get; set; }
+
+    public long ExpireTime { get; set; }
+
+    public string? Announce { get; set; }
+
+    public string? ProfileWebPageUrl { get; set; }
+
+    public string? SupportUrl { get; set; }
 
     public string? ConvertTarget { get; set; }
 

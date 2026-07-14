@@ -101,23 +101,29 @@ public class CoreManager
         }
     }
 
-    public async Task<ProcessService?> LoadCoreConfigSpeedtest(List<ServerTestItem> selecteds)
+    public async Task<ProcessService?> LoadCoreConfigSpeedtest(List<ServerTestItem> selecteds, bool displayLog = true)
     {
         var coreType = selecteds.FirstOrDefault()?.CoreType == ECoreType.sing_box ? ECoreType.sing_box : ECoreType.Xray;
         var fileName = string.Format(Global.CoreSpeedtestConfigFileName, Utils.GetGuid(false));
         var configPath = Utils.GetBinConfigPath(fileName);
         var result = await CoreConfigHandler.GenerateClientSpeedtestConfig(_config, configPath, selecteds, coreType);
-        await UpdateFunc(false, result.Msg);
+        if (displayLog)
+        {
+            await UpdateFunc(false, result.Msg);
+        }
         if (result.Success != true)
         {
             return null;
         }
 
-        await UpdateFunc(false, string.Format(ResUI.StartService, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss")));
-        await UpdateFunc(false, configPath);
+        if (displayLog)
+        {
+            await UpdateFunc(false, string.Format(ResUI.StartService, DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss")));
+            await UpdateFunc(false, configPath);
+        }
 
         var coreInfo = CoreInfoManager.Instance.GetCoreInfo(coreType);
-        return await RunProcess(coreInfo, fileName, true, false);
+        return await RunProcess(coreInfo, fileName, displayLog, false);
     }
 
     public async Task<ProcessService?> LoadCoreConfigSpeedtest(ServerTestItem testItem)

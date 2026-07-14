@@ -429,17 +429,31 @@ public partial class ProfilesView : ReactiveUserControl<ProfilesViewModel>
                         {
                             item2.IsVisible = _config.GuiItem.EnableStatistics;
                         }
-                        if (item.Name.Equals("IpInfo", StringComparison.CurrentCultureIgnoreCase))
-                        {
-                            item2.IsVisible = _config.SpeedTestItem.IPAPIUrl.IsNotEmpty();
-                        }
                     }
                 }
             }
+            EnsureCountryColumnVisibleAfterAddress();
         }
         catch (Exception ex)
         {
             Logging.SaveLog(_tag, ex);
+        }
+    }
+
+    private void EnsureCountryColumnVisibleAfterAddress()
+    {
+        var addressColumn = lstProfiles.Columns.FirstOrDefault(it => string.Equals(it.Tag?.ToString(), "Address", StringComparison.CurrentCultureIgnoreCase));
+        var countryColumn = lstProfiles.Columns.FirstOrDefault(it => string.Equals(it.Tag?.ToString(), "IpInfo", StringComparison.CurrentCultureIgnoreCase));
+        if (countryColumn == null)
+        {
+            return;
+        }
+
+        countryColumn.IsVisible = true;
+        var displayIndex = Math.Clamp((addressColumn?.DisplayIndex ?? 0) + 1, 0, lstProfiles.Columns.Count - 1);
+        if (countryColumn.DisplayIndex != displayIndex)
+        {
+            countryColumn.DisplayIndex = displayIndex;
         }
     }
 

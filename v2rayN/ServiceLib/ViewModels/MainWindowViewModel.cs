@@ -253,6 +253,11 @@ public class MainWindowViewModel : MyReactiveObject
             .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(async blProxy => await UpdateSubscriptionProcess("", blProxy));
 
+        AppEvents.CurrentSubscriptionUpdateRequested
+            .AsObservable()
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
+            .Subscribe(async subId => await UpdateSubscriptionProcess(subId, false));
+
         AppEvents.HasUpdateNotified
             .AsObservable()
             .ObserveOn(RxSchedulers.MainThreadScheduler)
@@ -474,7 +479,11 @@ public class MainWindowViewModel : MyReactiveObject
 
     public async Task UpdateSubscriptionProcess(string subId, bool blProxy)
     {
-        await Task.Run(async () => await SubscriptionHandler.UpdateProcess(_config, subId, blProxy, UpdateTaskHandler));
+        var success = await Task.Run(async () => await SubscriptionHandler.UpdateProcess(_config, subId, blProxy, UpdateTaskHandler));
+        if (success)
+        {
+            AppEvents.SubscriptionAutoSpeedtestRequested.Publish();
+        }
     }
 
     #endregion Subscription

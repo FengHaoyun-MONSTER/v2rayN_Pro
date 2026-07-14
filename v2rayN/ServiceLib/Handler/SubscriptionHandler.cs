@@ -2,7 +2,9 @@ namespace ServiceLib.Handler;
 
 public static class SubscriptionHandler
 {
-    public static async Task UpdateProcess(Config config, string subId, bool blProxy, Func<bool, string, Task> updateFunc)
+    private sealed record SubscriptionDownloadResult(string Content, IReadOnlyDictionary<string, string> Headers);
+
+    public static async Task<bool> UpdateProcess(Config config, string subId, bool blProxy, Func<bool, string, Task> updateFunc)
     {
         await updateFunc?.Invoke(false, ResUI.MsgUpdateSubscriptionStart);
         var subItem = await AppManager.Instance.SubItems();
@@ -10,7 +12,7 @@ public static class SubscriptionHandler
         if (subItem is not { Count: > 0 })
         {
             await updateFunc?.Invoke(false, ResUI.MsgNoValidSubscription);
-            return;
+            return false;
         }
 
         var successCount = 0;
@@ -38,8 +40,12 @@ public static class SubscriptionHandler
                 var result = await DownloadAllSubscriptions(config, item, blProxy, downloadHandle);
 
                 // Process download result
-                if (await ProcessDownloadResult(config, item.Id, result, hashCode, updateFunc))
+                if (await ProcessDownloadResult(config, item.Id, result.Content, hashCode, updateFunc))
                 {
+                    ApplySubscriptionMetadata(item, result.Headers);
+                    item.UpdateTime = DateTimeOffset.Now.ToUnixTimeSeconds();
+                    await ConfigHandler.AddSubItem(config, item);
+                    AppEvents.SubscriptionsRefreshRequested.Publish();
                     successCount++;
                 }
 
@@ -54,7 +60,9 @@ public static class SubscriptionHandler
             }
         }
 
-        await updateFunc?.Invoke(successCount > 0, $"{ResUI.MsgUpdateSubscriptionEnd}");
+        var success = successCount > 0;
+        await updateFunc?.Invoke(success, $"{ResUI.MsgUpdateSubscriptionEnd}");
+        return success;
     }
 
     private static bool IsValidSubscription(SubItem item, string subId)
@@ -90,34 +98,36 @@ public static class SubscriptionHandler
         return downloadHandle;
     }
 
-    private static async Task<string> DownloadSubscriptionContent(DownloadService downloadHandle, string url, bool blProxy, string userAgent)
+    private static async Task<DownloadStringResult> DownloadSubscriptionContent(DownloadService downloadHandle, string url, bool blProxy, string userAgent)
     {
-        var result = await downloadHandle.TryDownloadString(url, blProxy, userAgent);
+        var headers = DeviceInfoHelper.GetSubscriptionHeaders();
+        var result = await downloadHandle.TryDownloadStringWithHeaders(url, blProxy, userAgent, headers);
 
         // If download with proxy fails, try direct connection
-        if (blProxy && result.IsNullOrEmpty())
+        if (blProxy && result?.Content.IsNullOrEmpty() != false)
         {
-            result = await downloadHandle.TryDownloadString(url, false, userAgent);
+            result = await downloadHandle.TryDownloadStringWithHeaders(url, false, userAgent, headers);
         }
 
-        return result ?? string.Empty;
+        return result ?? new DownloadStringResult(string.Empty, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
     }
 
-    private static async Task<string> DownloadAllSubscriptions(Config config, SubItem item, bool blProxy, DownloadService downloadHandle)
+    private static async Task<SubscriptionDownloadResult> DownloadAllSubscriptions(Config config, SubItem item, bool blProxy, DownloadService downloadHandle)
     {
         // Download main subscription content
-        var result = await DownloadMainSubscription(config, item, blProxy, downloadHandle);
+        var mainResult = await DownloadMainSubscription(config, item, blProxy, downloadHandle);
+        var content = mainResult.Content;
 
         // Process additional subscription links (if any)
         if (item.ConvertTarget.IsNullOrEmpty() && item.MoreUrl.TrimEx().IsNotEmpty())
         {
-            result = await DownloadAdditionalSubscriptions(item, result, blProxy, downloadHandle);
+            content = await DownloadAdditionalSubscriptions(item, content, blProxy, downloadHandle);
         }
 
-        return result;
+        return new SubscriptionDownloadResult(content, mainResult.Headers);
     }
 
-    private static async Task<string> DownloadMainSubscription(Config config, SubItem item, bool blProxy, DownloadService downloadHandle)
+    private static async Task<DownloadStringResult> DownloadMainSubscription(Config config, SubItem item, bool blProxy, DownloadService downloadHandle)
     {
         // Prepare subscription URL and download directly
         var url = Utils.GetPunycode(item.Url.TrimEx());
@@ -166,7 +176,7 @@ public static class SubscriptionHandler
                 continue;
             }
 
-            var additionalResult = await DownloadSubscriptionContent(downloadHandle, url2, blProxy, item.UserAgent);
+            var additionalResult = (await DownloadSubscriptionContent(downloadHandle, url2, blProxy, item.UserAgent)).Content;
 
             if (additionalResult.IsNotEmpty())
             {
@@ -183,6 +193,80 @@ public static class SubscriptionHandler
         }
 
         return result;
+    }
+
+    private static void ApplySubscriptionMetadata(SubItem item, IReadOnlyDictionary<string, string> headers)
+    {
+        var profileTitle = FindHeader(headers, "profile-title");
+        if (item.AutoRemarks && profileTitle.IsNotEmpty())
+        {
+            var title = DecodeHeaderText(profileTitle!);
+            if (title.IsNotEmpty())
+            {
+                item.Remarks = title;
+            }
+        }
+
+        var userInfo = FindHeader(headers, "subscription-userinfo");
+        if (userInfo.IsNotEmpty())
+        {
+            foreach (var part in userInfo!.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                var pair = part.Split('=', 2, StringSplitOptions.TrimEntries);
+                if (pair.Length != 2 || !long.TryParse(pair[1], out var value))
+                {
+                    continue;
+                }
+
+                switch (pair[0].ToLowerInvariant())
+                {
+                    case "upload":
+                        item.TrafficUpload = value;
+                        break;
+                    case "download":
+                        item.TrafficDownload = value;
+                        break;
+                    case "total":
+                        item.TrafficTotal = value;
+                        break;
+                    case "expire":
+                        item.ExpireTime = value;
+                        break;
+                }
+            }
+        }
+
+        var announce = FindHeader(headers, "announce");
+        if (announce.IsNotEmpty())
+        {
+            item.Announce = DecodeHeaderText(announce!);
+        }
+
+        item.ProfileWebPageUrl = FindHeader(headers, "profile-web-page-url") ?? item.ProfileWebPageUrl;
+        item.SupportUrl = FindHeader(headers, "support-url") ?? item.SupportUrl;
+    }
+
+    private static string? FindHeader(IReadOnlyDictionary<string, string> headers, string suffix)
+    {
+        return headers.FirstOrDefault(item => item.Key.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)).Value;
+    }
+
+    private static string DecodeHeaderText(string value)
+    {
+        var decoded = value;
+        if (value.StartsWith("base64:", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                decoded = Encoding.UTF8.GetString(Convert.FromBase64String(value[7..]));
+            }
+            catch (FormatException)
+            {
+                decoded = value;
+            }
+        }
+
+        return decoded.Replace("\\n", Environment.NewLine).Trim();
     }
 
     private static async Task<bool> ProcessDownloadResult(Config config, string id, string result, string hashCode, Func<bool, string, Task> updateFunc)

@@ -22,6 +22,16 @@
     <Grid>
         <DockPanel>
             <WrapPanel Margin="{StaticResource Margin4}" DockPanel.Dock="Top">
+                <Button
+                    x:Name="btnShowSubscriptionDashboard"
+                    Height="30"
+                    MinWidth="76"
+                    Margin="{StaticResource MarginLeftRight4}"
+                    Content="展开首页"
+                    Padding="10,0"
+                    Style="{StaticResource DefButton}"
+                    ToolTip="展开首页"
+                    Visibility="Collapsed" />
                 <ListBox
                     x:Name="lstGroup"
                     MaxHeight="200"
@@ -38,24 +48,24 @@
 
                 <Button
                     x:Name="btnEditSub"
-                    Width="30"
                     Height="30"
+                    MinWidth="76"
                     Margin="{StaticResource MarginLeftRight4}"
                     AutomationProperties.Name="{x:Static resx:ResUI.menuSubEdit}"
-                    Style="{StaticResource MaterialDesignFloatingActionMiniLightButton}"
-                    ToolTip="{x:Static resx:ResUI.menuSubEdit}">
-                    <materialDesign:PackIcon VerticalAlignment="Center" Kind="Edit" />
-                </Button>
+                    Content="修改订阅"
+                    Padding="10,0"
+                    Style="{StaticResource DefButton}"
+                    ToolTip="修改订阅" />
                 <Button
                     x:Name="btnAddSub"
-                    Width="30"
                     Height="30"
+                    MinWidth="76"
                     Margin="{StaticResource MarginLeftRight4}"
                     AutomationProperties.Name="{x:Static resx:ResUI.menuSubAdd}"
-                    Style="{StaticResource MaterialDesignFloatingActionMiniLightButton}"
-                    ToolTip="{x:Static resx:ResUI.menuSubAdd}">
-                    <materialDesign:PackIcon VerticalAlignment="Center" Kind="Plus" />
-                </Button>
+                    Content="添加订阅"
+                    Padding="10,0"
+                    Style="{StaticResource DefButton}"
+                    ToolTip="添加订阅" />
 
                 <TextBox
                     x:Name="txtServerFilter"
@@ -69,31 +79,32 @@
 
                 <Button
                     x:Name="btnAutofitColumnWidth"
-                    Width="30"
                     Height="30"
+                    MinWidth="76"
                     Margin="{StaticResource MarginLeftRight4}"
                     AutomationProperties.Name="{x:Static resx:ResUI.menuProfileAutofitColumnWidth}"
-                    Style="{StaticResource MaterialDesignFloatingActionMiniLightButton}"
-                    ToolTip="{x:Static resx:ResUI.menuProfileAutofitColumnWidth}">
-                    <materialDesign:PackIcon VerticalAlignment="Center" Kind="ArrowSplitVertical" />
-                </Button>
+                    Content="调整列宽"
+                    Padding="10,0"
+                    Style="{StaticResource DefButton}"
+                    ToolTip="{x:Static resx:ResUI.menuProfileAutofitColumnWidth}" />
 
                 <Button
                     x:Name="btnFastRealPing"
-                    Width="30"
                     Height="30"
+                    MinWidth="76"
                     Margin="{StaticResource MarginLeftRight4}"
-                    Style="{StaticResource MaterialDesignFloatingActionMiniLightButton}"
-                    ToolTip="{x:Static resx:ResUI.menuFastRealPing}">
-                    <materialDesign:PackIcon VerticalAlignment="Center" Kind="LightningBolt" />
-                </Button>
+                    Content="延迟测试"
+                    Padding="10,0"
+                    Style="{StaticResource DefButton}"
+                    ToolTip="{x:Static resx:ResUI.menuFastRealPing}" />
                 <Button
                     x:Name="menuMixedTestServer"
                     Width="30"
                     Height="30"
                     Margin="{StaticResource MarginLeftRight4}"
                     Style="{StaticResource MaterialDesignFloatingActionMiniLightButton}"
-                    ToolTip="{x:Static resx:ResUI.menuMixedTestServer}">
+                    ToolTip="{x:Static resx:ResUI.menuMixedTestServer}"
+                    Visibility="Collapsed">
                     <materialDesign:PackIcon VerticalAlignment="Center" Kind="Speedometer" />
                 </Button>
             </WrapPanel>
@@ -147,6 +158,11 @@
                             x:Name="menuRemoveInvalidServerResult"
                             Height="{StaticResource MenuItemHeight}"
                             Header="{x:Static resx:ResUI.menuRemoveInvalidServerResult}" />
+                        <MenuItem
+                            x:Name="menuGenerateCloudflareBestNodes"
+                            Height="{StaticResource MenuItemHeight}"
+                            Header="以此节点自动生成最优节点"
+                            Visibility="Collapsed" />
                         <Separator />
                         <MenuItem
                             x:Name="menuTcpingServer"
@@ -295,6 +311,12 @@
                         ExName="Address"
                         Header="{x:Static resx:ResUI.LvAddress}" />
                     <base:MyDGTextColumn
+                        x:Name="colIpInfo"
+                        Width="100"
+                        Binding="{Binding IpInfo}"
+                        ExName="IpInfo"
+                        Header="{x:Static resx:ResUI.LvTestIpInfo}" />
+                    <base:MyDGTextColumn
                         Width="60"
                         Binding="{Binding Port}"
                         ExName="Port"
@@ -345,13 +367,6 @@
                         Binding="{Binding TodayUp}"
                         ExName="TodayUp"
                         Header="{x:Static resx:ResUI.LvTodayUploadDataAmount}" />
-
-                    <base:MyDGTextColumn
-                        x:Name="colIpInfo"
-                        Width="100"
-                        Binding="{Binding IpInfo}"
-                        ExName="IpInfo"
-                        Header="{x:Static resx:ResUI.LvTestIpInfo}" />
 
                     <base:MyDGTextColumn
                         x:Name="colTodayDown"

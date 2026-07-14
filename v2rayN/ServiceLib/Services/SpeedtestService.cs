@@ -11,14 +11,23 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
     private readonly int _speedTestPageSize = config.SpeedTestItem.SpeedTestPageSize ?? Global.SpeedTestPageSize;
     private readonly TimeSpan _delayInterval = TimeSpan.FromSeconds(config.SpeedTestItem.SpeedTestDelayInterval ?? 1);
 
-    public void RunLoop(ESpeedActionType actionType, List<ProfileItem> selecteds)
+    public void RunLoop(ESpeedActionType actionType, List<ProfileItem> selecteds, Func<Task>? completedFunc = null)
     {
         Task.Run(async () =>
         {
-            await RunAsync(actionType, selecteds);
-            await ProfileExManager.Instance.SaveTo();
-            await UpdateFunc("", ResUI.SpeedtestingCompleted);
+            await RunOnceAsync(actionType, selecteds, completedFunc);
         });
+    }
+
+    public async Task RunOnceAsync(ESpeedActionType actionType, List<ProfileItem> selecteds, Func<Task>? completedFunc = null, bool displayCoreLog = true)
+    {
+        await RunAsync(actionType, selecteds, displayCoreLog);
+        await ProfileExManager.Instance.SaveTo();
+        if (completedFunc != null)
+        {
+            await completedFunc();
+        }
+        await UpdateFunc("", ResUI.SpeedtestingCompleted);
     }
 
     public void ExitLoop()
@@ -36,7 +45,7 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
         return _lstExitLoop.All(p => p != exitLoopKey);
     }
 
-    private async Task RunAsync(ESpeedActionType actionType, List<ProfileItem> selecteds)
+    private async Task RunAsync(ESpeedActionType actionType, List<ProfileItem> selecteds, bool displayCoreLog = true)
     {
         var exitLoopKey = Utils.GetGuid(false);
         _lstExitLoop.Add(exitLoopKey);
@@ -50,7 +59,7 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
                 break;
 
             case ESpeedActionType.Realping:
-                await RunRealPingBatchAsync(lstSelected, exitLoopKey);
+                await RunRealPingBatchAsync(lstSelected, exitLoopKey, displayCoreLog: displayCoreLog);
                 break;
 
             case ESpeedActionType.UdpTest:
@@ -112,17 +121,26 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
                 case ESpeedActionType.UdpTest:
                     await UpdateFunc(it.IndexId, ResUI.Speedtesting, "");
                     ProfileExManager.Instance.SetTestDelay(it.IndexId, 0);
+                    if (actionType == ESpeedActionType.Realping)
+                    {
+                        ProfileExManager.Instance.SetTestIpInfo(it.IndexId, string.Empty);
+                        await UpdateIpInfoFunc(it.IndexId, string.Empty);
+                    }
                     break;
 
                 case ESpeedActionType.Speedtest:
                     await UpdateFunc(it.IndexId, "", ResUI.SpeedtestingWait);
                     ProfileExManager.Instance.SetTestSpeed(it.IndexId, 0);
+                    ProfileExManager.Instance.SetTestIpInfo(it.IndexId, string.Empty);
+                    await UpdateIpInfoFunc(it.IndexId, string.Empty);
                     break;
 
                 case ESpeedActionType.Mixedtest:
                     await UpdateFunc(it.IndexId, ResUI.Speedtesting, ResUI.SpeedtestingWait);
                     ProfileExManager.Instance.SetTestDelay(it.IndexId, 0);
                     ProfileExManager.Instance.SetTestSpeed(it.IndexId, 0);
+                    ProfileExManager.Instance.SetTestIpInfo(it.IndexId, string.Empty);
+                    await UpdateIpInfoFunc(it.IndexId, string.Empty);
                     break;
             }
         }
@@ -184,7 +202,7 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
         }
     }
 
-    private async Task RunRealPingBatchAsync(List<ServerTestItem> lstSelected, string exitLoopKey, int pageSize = 0)
+    private async Task RunRealPingBatchAsync(List<ServerTestItem> lstSelected, string exitLoopKey, int pageSize = 0, bool displayCoreLog = true)
     {
         if (pageSize <= 0)
         {
@@ -195,7 +213,7 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
         List<ServerTestItem> lstFailed = [];
         foreach (var lst in lstTest)
         {
-            var ret = await RunRealPingAsync(lst, exitLoopKey);
+            var ret = await RunRealPingAsync(lst, exitLoopKey, displayCoreLog);
             if (ret == false)
             {
                 lstFailed.AddRange(lst);
@@ -217,7 +235,7 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
 
             if (pageSizeNext > _config.SpeedTestItem.MixedConcurrencyCount)
             {
-                await RunRealPingBatchAsync(lstFailed, exitLoopKey, pageSizeNext);
+                await RunRealPingBatchAsync(lstFailed, exitLoopKey, pageSizeNext, displayCoreLog);
             }
             else
             {
@@ -226,12 +244,12 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
         }
     }
 
-    private async Task<bool> RunRealPingAsync(List<ServerTestItem> selecteds, string exitLoopKey)
+    private async Task<bool> RunRealPingAsync(List<ServerTestItem> selecteds, string exitLoopKey, bool displayCoreLog = true)
     {
         ProcessService processService = null;
         try
         {
-            processService = await CoreManager.Instance.LoadCoreConfigSpeedtest(selecteds);
+            processService = await CoreManager.Instance.LoadCoreConfigSpeedtest(selecteds, displayCoreLog);
             if (processService is null)
             {
                 return false;
@@ -427,14 +445,14 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
 
         if (responseTime > 0)
         {
-            var ipInfo = await ConnectionHandler.GetIPInfo(webProxy);
-            var ipStr = ipInfo?.ToString() ?? Global.None;
-            ProfileExManager.Instance.SetTestIpInfo(it.IndexId, ipStr);
-            await UpdateIpInfoFunc(it.IndexId, ipStr);
+            var region = await ConnectionHandler.GetCloudflareRegion(webProxy);
+            ProfileExManager.Instance.SetTestIpInfo(it.IndexId, region);
+            await UpdateIpInfoFunc(it.IndexId, region);
         }
         else
         {
-            await UpdateIpInfoFunc(it.IndexId, ResUI.SpeedtestingSkip);
+            ProfileExManager.Instance.SetTestIpInfo(it.IndexId, CloudflareColoMapper.Unknown);
+            await UpdateIpInfoFunc(it.IndexId, CloudflareColoMapper.Unknown);
         }
 
         return responseTime;

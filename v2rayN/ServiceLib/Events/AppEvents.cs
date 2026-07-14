@@ -7,10 +7,14 @@ public static class AppEvents
     public static readonly EventChannel<Unit> AddServerViaScanRequested = new();
     public static readonly EventChannel<Unit> AddServerViaClipboardRequested = new();
     public static readonly EventChannel<bool> SubscriptionsUpdateRequested = new();
+    public static readonly EventChannel<string> CurrentSubscriptionUpdateRequested = new();
     public static readonly EventChannel<bool> HasUpdateNotified = new();
 
     public static readonly EventChannel<Unit> ProfilesRefreshRequested = new();
     public static readonly EventChannel<Unit> SubscriptionsRefreshRequested = new();
+    public static readonly EventChannel<string> SubscriptionSelectionChanged = new();
+    public static readonly EventChannel<bool> SubscriptionDashboardVisibilityChanged = new();
+    public static readonly EventChannel<Unit> SubscriptionAutoSpeedtestRequested = new();
     public static readonly EventChannel<Unit> ProxiesReloadRequested = new();
     public static readonly EventChannel<ServerSpeedItem> DispatcherStatisticsRequested = new();
 

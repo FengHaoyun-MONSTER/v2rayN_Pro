@@ -8,7 +8,13 @@ public class ProfilesViewModel : MyReactiveObject
     private string _serverFilter = string.Empty;
     private readonly Dictionary<string, bool> _dicHeaderSort = new();
     private SpeedtestService? _speedtestService;
+    private CloudflareSpeedTestService? _cloudflareSpeedTestService;
     private string? _pendingSelectIndexId;
+    private const string CloudflareTemplateAddress = "cfth.thinderbox.uk";
+    private const string CloudflareBestNodeRemark = "最优节点";
+    private const int CloudflareBestNodeLimit = 100;
+    private const int CloudflareBestNodeMaxDelay = 500;
+    private const int AutoDelayCleanupMaxDelay = 500;
 
     #endregion private prop
 
@@ -32,6 +38,15 @@ public class ProfilesViewModel : MyReactiveObject
     [Reactive]
     public string ServerFilter { get; set; }
 
+    [Reactive]
+    public bool CanShowCloudflareBestNodeMenu { get; set; }
+
+    [Reactive]
+    public bool IsCloudflareOptimizing { get; set; }
+
+    [Reactive]
+    public string CloudflareBestNodeMenuHeader { get; set; } = "以此节点自动生成最优节点";
+
     #endregion ObservableCollection
 
     #region Menu
@@ -44,6 +59,7 @@ public class ProfilesViewModel : MyReactiveObject
     public ReactiveCommand<Unit, Unit> CopyServerCmd { get; }
     public ReactiveCommand<Unit, Unit> SetDefaultServerCmd { get; }
     public ReactiveCommand<Unit, Unit> ShareServerCmd { get; }
+    public ReactiveCommand<Unit, Unit> GenerateCloudflareBestNodesCmd { get; }
     public ReactiveCommand<Unit, Unit> GenGroupAllServerCmd { get; }
     public ReactiveCommand<Unit, Unit> GenGroupRegionServerCmd { get; }
 
@@ -92,11 +108,23 @@ public class ProfilesViewModel : MyReactiveObject
         var canEditRemove = this.WhenAnyValue(
            x => x.SelectedProfile,
            selectedSource => selectedSource != null && !selectedSource.IndexId.IsNullOrEmpty());
+        var canGenerateCloudflareBestNodes = this.WhenAnyValue(
+            x => x.SelectedProfile,
+            x => x.IsCloudflareOptimizing,
+            (selectedSource, optimizing) => IsCloudflareTemplateNode(selectedSource) && !optimizing);
 
         this.WhenAnyValue(
             x => x.SelectedSub,
             y => y != null && !y.Remarks.IsNullOrEmpty() && _config.SubIndexId != y.Id)
                 .Subscribe(async c => await SubSelectedChangedAsync(c));
+        this.WhenAnyValue(
+            x => x.SelectedProfile,
+            selectedSource => IsCloudflareTemplateNode(selectedSource))
+                .Subscribe(v => CanShowCloudflareBestNodeMenu = v);
+        this.WhenAnyValue(
+            x => x.IsCloudflareOptimizing,
+            optimizing => optimizing ? "优选中..." : "以此节点自动生成最优节点")
+                .Subscribe(v => CloudflareBestNodeMenuHeader = v);
         this.WhenAnyValue(
              x => x.SelectedMoveToGroup,
              y => y != null && !y.Remarks.IsNullOrEmpty())
@@ -132,6 +160,10 @@ public class ProfilesViewModel : MyReactiveObject
         {
             await ShareServerAsync();
         }, canEditRemove);
+        GenerateCloudflareBestNodesCmd = ReactiveCommand.CreateFromTask(async () =>
+        {
+            await GenerateCloudflareBestNodes();
+        }, canGenerateCloudflareBestNodes);
         GenGroupAllServerCmd = ReactiveCommand.CreateFromTask(async () =>
         {
             await GenGroupAllServer();
@@ -166,7 +198,7 @@ public class ProfilesViewModel : MyReactiveObject
         //servers ping
         FastRealPingCmd = ReactiveCommand.CreateFromTask(async () =>
         {
-            await ServerSpeedtest(ESpeedActionType.FastRealping);
+            await ServerSpeedtest(ESpeedActionType.Realping, testAll: true);
         });
         MixedTestServerCmd = ReactiveCommand.CreateFromTask(async () =>
         {
@@ -245,6 +277,11 @@ public class ProfilesViewModel : MyReactiveObject
             .AsObservable()
             .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(async _ => await RefreshSubscriptions());
+
+        AppEvents.SubscriptionAutoSpeedtestRequested
+            .AsObservable()
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
+            .Subscribe(async _ => await AutoRealPingAndSort());
 
         AppEvents.DispatcherStatisticsRequested
             .AsObservable()
@@ -347,6 +384,7 @@ public class ProfilesViewModel : MyReactiveObject
             return;
         }
         _config.SubIndexId = SelectedSub?.Id;
+        AppEvents.SubscriptionSelectionChanged.Publish(_config.SubIndexId ?? string.Empty);
 
         await RefreshServers();
 
@@ -642,7 +680,230 @@ public class ProfilesViewModel : MyReactiveObject
         await RefreshServers();
     }
 
-    public async Task SortServer(string colName)
+    private async Task GenerateCloudflareBestNodes()
+    {
+        if (IsCloudflareOptimizing)
+        {
+            NoticeManager.Instance.Enqueue("优选中...");
+            return;
+        }
+
+        var template = await AppManager.Instance.GetProfileItem(SelectedProfile?.IndexId);
+        if (!IsCloudflareTemplateNode(template))
+        {
+            NoticeManager.Instance.Enqueue("请选择地址为 cfth.thinderbox.uk 的模板节点。");
+            return;
+        }
+
+        IsCloudflareOptimizing = true;
+        NoticeManager.Instance.SendMessageAndEnqueue("优选中...");
+
+        try
+        {
+            SendCloudflareBestLog($"开始自动生成最优节点，模板：{template.GetSummary()}，当前分组：{_config.SubIndexId}");
+            var cleanup = await CleanupOldCloudflareBestNodes();
+            SendCloudflareBestLog($"旧最优节点清理完成：保留 {cleanup.KeptCount} 个，删除 {cleanup.RemovedCount} 个。");
+            var addCount = Math.Max(0, CloudflareBestNodeLimit - cleanup.KeptCount);
+            var addedIndexIds = new List<string>();
+            SendCloudflareBestLog($"最优节点池上限 {CloudflareBestNodeLimit} 个，本次需要补齐 {addCount} 个。");
+
+            if (addCount > 0)
+            {
+                _cloudflareSpeedTestService ??= new CloudflareSpeedTestService();
+                SendCloudflareBestLog("开始启动 CloudflareST。");
+                var cfstResult = await _cloudflareSpeedTestService.RunAsync(addCount);
+                if (cfstResult.Success)
+                {
+                    SendCloudflareBestLog($"CloudflareST 返回 {cfstResult.Records.Count} 条候选记录，开始生成节点。");
+                    addedIndexIds = await AddCloudflareBestNodes(template, cfstResult.Records, addCount);
+                    SendCloudflareBestLog($"最优节点生成完成：新增 {addedIndexIds.Count} 个。");
+                }
+                else
+                {
+                    SendCloudflareBestLog($"CloudflareST 执行失败：{cfstResult.Message}");
+                    NoticeManager.Instance.Enqueue(cfstResult.Message);
+                }
+            }
+            else
+            {
+                NoticeManager.Instance.Enqueue($"当前分组已保留 {CloudflareBestNodeLimit} 个可用最优节点。");
+            }
+
+            await RefreshServers();
+
+            var profiles = await GetCurrentGroupProfilesOrdered();
+            if (profiles.Count > 0)
+            {
+                SendCloudflareBestLog($"开始对当前分组 {profiles.Count} 个节点执行真延迟测试、排序并设置活动节点。");
+                await RunSpeedtestOnce(ESpeedActionType.Realping, profiles, async () => await CleanupDelaySortAndSetFirstServer(profiles), displayCoreLog: false);
+                SendCloudflareBestLog("真延迟测试、排序和活动节点设置流程完成。");
+            }
+
+            NoticeManager.Instance.Enqueue($"优选完成：保留 {cleanup.KeptCount} 个，删除 {cleanup.RemovedCount} 个，新增 {addedIndexIds.Count} 个。");
+            SendCloudflareBestLog($"优选完成：保留 {cleanup.KeptCount} 个，删除 {cleanup.RemovedCount} 个，新增 {addedIndexIds.Count} 个。");
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog("Generate Cloudflare best nodes failed", ex);
+            NoticeManager.Instance.Enqueue($"优选失败：{ex.Message}");
+            SendCloudflareBestLog($"优选失败：{ex.Message}");
+        }
+        finally
+        {
+            IsCloudflareOptimizing = false;
+            SendCloudflareBestLog("自动生成最优节点流程结束。");
+        }
+    }
+
+    private async Task<CloudflareBestCleanupResult> CleanupOldCloudflareBestNodes()
+    {
+        var oldNodes = await GetCurrentGroupCloudflareBestNodes();
+        if (oldNodes.Count == 0)
+        {
+            SendCloudflareBestLog("当前分组没有旧的最优节点，跳过清理。");
+            return new(0, 0);
+        }
+
+        SendCloudflareBestLog($"发现旧最优节点 {oldNodes.Count} 个，开始执行真延迟测试。");
+        await RunSpeedtestOnce(ESpeedActionType.Realping, oldNodes, displayCoreLog: false);
+
+        var profileExs = await ProfileExManager.Instance.GetProfileExs();
+        var delayMap = profileExs
+            .Where(t => t.IndexId.IsNotEmpty())
+            .GroupBy(t => t.IndexId)
+            .ToDictionary(t => t.Key, t => t.First().Delay);
+
+        var removeList = oldNodes
+            .Where(t =>
+            {
+                delayMap.TryGetValue(t.IndexId, out var delay);
+                return delay == -1 || delay > CloudflareBestNodeMaxDelay;
+            })
+            .ToList();
+
+        if (removeList.Count > 0)
+        {
+            SendCloudflareBestLog($"删除不可用旧最优节点 {removeList.Count} 个。");
+            await ConfigHandler.RemoveServers(_config, removeList);
+        }
+
+        return new(oldNodes.Count - removeList.Count, removeList.Count);
+    }
+
+    private async Task<List<ProfileItem>> GetCurrentGroupCloudflareBestNodes()
+    {
+        var items = await AppManager.Instance.ProfileItems(_config.SubIndexId) ?? [];
+        return items
+            .Where(t => string.Equals(t.Remarks, CloudflareBestNodeRemark, StringComparison.Ordinal))
+            .ToList();
+    }
+
+    private async Task<List<ProfileItem>> GetCurrentGroupProfilesOrdered()
+    {
+        var profiles = await AppManager.Instance.ProfileItems(_config.SubIndexId) ?? [];
+        var profileExs = await ProfileExManager.Instance.GetProfileExs();
+        var sortMap = profileExs
+            .Where(t => t.IndexId.IsNotEmpty())
+            .GroupBy(t => t.IndexId)
+            .ToDictionary(t => t.Key, t => t.First().Sort);
+
+        return profiles
+            .OrderBy(t => sortMap.GetValueOrDefault(t.IndexId))
+            .ToList();
+    }
+
+    private async Task<List<string>> AddCloudflareBestNodes(ProfileItem template, IReadOnlyList<CloudflareSpeedTestRecord> records, int addCount)
+    {
+        var addedIndexIds = new List<string>();
+        if (records.Count == 0 || addCount <= 0)
+        {
+            return addedIndexIds;
+        }
+
+        var currentGroupItems = await AppManager.Instance.ProfileItems(_config.SubIndexId) ?? [];
+        var templateGroupItems = string.Equals(template.Subid, _config.SubIndexId, StringComparison.Ordinal)
+            ? currentGroupItems
+            : await AppManager.Instance.ProfileItems(template.Subid) ?? [];
+
+        var usedAddresses = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            CloudflareTemplateAddress,
+        };
+        foreach (var item in currentGroupItems.Concat(templateGroupItems))
+        {
+            if (item.Address.IsNotEmpty())
+            {
+                usedAddresses.Add(item.Address);
+            }
+        }
+
+        foreach (var record in records)
+        {
+            if (addedIndexIds.Count >= addCount)
+            {
+                break;
+            }
+            if (!usedAddresses.Add(record.IpAddress))
+            {
+                continue;
+            }
+
+            var profileItem = JsonUtils.DeepCopy(template);
+            if (profileItem is null)
+            {
+                continue;
+            }
+
+            profileItem.IndexId = string.Empty;
+            profileItem.Remarks = CloudflareBestNodeRemark;
+            profileItem.Address = record.IpAddress;
+            profileItem.Subid = template.Subid;
+            ApplyCloudflareTemplateHost(profileItem, template);
+
+            if (await ConfigHandler.AddServerCommon(_config, profileItem, true) == 0
+                && profileItem.IndexId.IsNotEmpty())
+            {
+                addedIndexIds.Add(profileItem.IndexId);
+            }
+        }
+
+        return addedIndexIds;
+    }
+
+    private static void SendCloudflareBestLog(string message)
+    {
+        Logging.SaveLog(message);
+        NoticeManager.Instance.SendMessageEx(message);
+    }
+
+    private static void ApplyCloudflareTemplateHost(ProfileItem profileItem, ProfileItem template)
+    {
+        var templateTransport = template.GetTransportExtra();
+#pragma warning disable CS0618
+        var templateHost = templateTransport.Host.NullIfEmpty()
+                           ?? template.RequestHost.NullIfEmpty()
+                           ?? template.Address.NullIfEmpty()
+                           ?? CloudflareTemplateAddress;
+
+        profileItem.RequestHost = templateHost;
+#pragma warning restore CS0618
+        profileItem.Sni = template.Sni.NullIfEmpty() ?? templateHost;
+        profileItem.SetTransportExtra(profileItem.GetTransportExtra() with { Host = templateHost });
+    }
+
+    private static bool IsCloudflareTemplateNode(ProfileItemModel? item)
+    {
+        return string.Equals(item?.Address, CloudflareTemplateAddress, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsCloudflareTemplateNode(ProfileItem? item)
+    {
+        return string.Equals(item?.Address, CloudflareTemplateAddress, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private sealed record CloudflareBestCleanupResult(int KeptCount, int RemovedCount);
+
+    public async Task SortServer(string colName, bool? ascOverride = null)
     {
         if (colName.IsNullOrEmpty())
         {
@@ -651,11 +912,12 @@ public class ProfilesViewModel : MyReactiveObject
 
         _dicHeaderSort.TryAdd(colName, true);
         _dicHeaderSort.TryGetValue(colName, out var asc);
-        if (await ConfigHandler.SortServers(_config, _config.SubIndexId, colName, asc) != 0)
+        var sortAsc = ascOverride ?? asc;
+        if (await ConfigHandler.SortServers(_config, _config.SubIndexId, colName, sortAsc) != 0)
         {
             return;
         }
-        _dicHeaderSort[colName] = !asc;
+        _dicHeaderSort[colName] = !sortAsc;
         await RefreshServers();
     }
 
@@ -720,16 +982,122 @@ public class ProfilesViewModel : MyReactiveObject
         }
     }
 
-    public async Task ServerSpeedtest(ESpeedActionType actionType)
+    private async Task AutoRealPingAndSort()
     {
-        List<ProfileItem>? lstSelected;
-        if (actionType is ESpeedActionType.Mixedtest or ESpeedActionType.FastRealping)
+        await RefreshServers();
+        await ServerSpeedtest(ESpeedActionType.Realping, sortAfterComplete: true, testAll: true);
+    }
+
+    private async Task SortDelayAndSetFirstServer()
+    {
+        await SortServer(nameof(EServerColName.DelayVal), true);
+
+        var lstModel = await GetProfileItemsEx(_config.SubIndexId, string.Empty);
+        var first = lstModel?.FirstOrDefault(t => t.IndexId.IsNotEmpty()
+            && t.ConfigType != EConfigType.Custom
+            && (t.ConfigType.IsComplexType() || t.Port > 0));
+
+        if (first?.IndexId.IsNotEmpty() == true)
         {
-            if (actionType == ESpeedActionType.FastRealping)
+            await SetDefaultServer(first.IndexId);
+        }
+    }
+
+    private async Task CleanupDelaySortAndSetFirstServer(IReadOnlyList<ProfileItem> testedProfiles)
+    {
+        var removedCount = await CleanupUnavailableAutoDelayNodes(testedProfiles);
+        if (removedCount > 0)
+        {
+            NoticeManager.Instance.Enqueue($"自动延迟测试已删除不可用节点 {removedCount} 个");
+            await RefreshServers();
+        }
+
+        await SortDelayAndSetFirstServer();
+    }
+
+    private async Task<int> CleanupUnavailableAutoDelayNodes(IReadOnlyList<ProfileItem> testedProfiles)
+    {
+        var testedIds = testedProfiles
+            .Where(t => t.IndexId.IsNotEmpty()
+                && t.ConfigType != EConfigType.Custom
+                && (t.ConfigType.IsComplexType() || t.Port > 0))
+            .Select(t => t.IndexId)
+            .Distinct()
+            .ToList();
+
+        if (testedIds.Count == 0)
+        {
+            return 0;
+        }
+
+        var profileMap = await AppManager.Instance.GetProfileItemsByIndexIdsAsMap(testedIds);
+        var testedIdSet = testedIds.ToHashSet(StringComparer.Ordinal);
+        var profileExs = await ProfileExManager.Instance.GetProfileExs();
+        var delayMap = profileExs
+            .Where(t => t.IndexId.IsNotEmpty() && testedIdSet.Contains(t.IndexId))
+            .GroupBy(t => t.IndexId)
+            .ToDictionary(t => t.Key, t => t.First().Delay);
+
+        var removeList = new List<ProfileItem>();
+        foreach (var id in testedIds)
+        {
+            if (!profileMap.TryGetValue(id, out var profile))
             {
-                actionType = ESpeedActionType.Realping;
+                continue;
             }
 
+            if (delayMap.TryGetValue(id, out var delay)
+                && (delay == -1 || delay > AutoDelayCleanupMaxDelay))
+            {
+                removeList.Add(profile);
+            }
+        }
+
+        if (removeList.Count == 0)
+        {
+            return 0;
+        }
+
+        await ConfigHandler.RemoveServers(_config, removeList);
+        return removeList.Count;
+    }
+
+    private SpeedtestService GetSpeedtestService()
+    {
+        _speedtestService ??= new SpeedtestService(_config, async (SpeedTestResult result) =>
+        {
+            RxSchedulers.MainThreadScheduler.Schedule(result, (scheduler, result) =>
+            {
+                _ = SetSpeedTestResult(result);
+                return Disposable.Empty;
+            });
+            await Task.CompletedTask;
+        });
+
+        return _speedtestService;
+    }
+
+    private async Task RunSpeedtestOnce(ESpeedActionType actionType, List<ProfileItem> selecteds, Func<Task>? completedFunc = null, bool displayCoreLog = true)
+    {
+        if (selecteds.Count <= 0)
+        {
+            return;
+        }
+
+        await GetSpeedtestService().RunOnceAsync(actionType, selecteds, completedFunc, displayCoreLog);
+    }
+
+    public async Task ServerSpeedtest(ESpeedActionType actionType, bool sortAfterComplete = false, bool testAll = false)
+    {
+        List<ProfileItem>? lstSelected;
+        if (actionType == ESpeedActionType.FastRealping)
+        {
+            actionType = ESpeedActionType.Realping;
+            testAll = true;
+        }
+
+        if (actionType == ESpeedActionType.Mixedtest || testAll)
+        {
             lstSelected = JsonUtils.Deserialize<List<ProfileItem>>(JsonUtils.Serialize(ProfileItems?.OrderBy(t => t.Sort)));
         }
         else
@@ -742,16 +1110,10 @@ public class ProfilesViewModel : MyReactiveObject
             return;
         }
 
-        _speedtestService ??= new SpeedtestService(_config, async (SpeedTestResult result) =>
-        {
-            RxSchedulers.MainThreadScheduler.Schedule(result, (scheduler, result) =>
-            {
-                _ = SetSpeedTestResult(result);
-                return Disposable.Empty;
-            });
-            await Task.CompletedTask;
-        });
-        _speedtestService?.RunLoop(actionType, lstSelected);
+        Func<Task>? completedFunc = sortAfterComplete
+            ? async () => await CleanupDelaySortAndSetFirstServer(lstSelected)
+            : null;
+        GetSpeedtestService().RunLoop(actionType, lstSelected, completedFunc);
     }
 
     public void ServerSpeedtestStop()
@@ -895,8 +1257,16 @@ public class ProfilesViewModel : MyReactiveObject
         }
         if (await _updateView?.Invoke(EViewAction.SubEditWindow, item) == true)
         {
+            if (blNew && item.Id.IsNotEmpty())
+            {
+                _config.SubIndexId = item.Id;
+            }
             await RefreshSubscriptions();
             await SubSelectedChangedAsync(true);
+            if (blNew && item.Id.IsNotEmpty() && item.Url.IsNotEmpty())
+            {
+                AppEvents.CurrentSubscriptionUpdateRequested.Publish(item.Id);
+            }
         }
     }
 

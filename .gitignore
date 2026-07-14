@@ -62,6 +62,11 @@ project.lock.json
 project.fragment.lock.json
 artifacts/
 
+# Local CloudflareSpeedTest source and download caches.
+/cfst/
+/cfst_windows_amd64/
+/cfst_windows_amd64.zip
+
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
 

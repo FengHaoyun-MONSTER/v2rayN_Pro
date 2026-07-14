@@ -41,10 +41,12 @@ public partial class MainWindow
                 break;
 
             case EGirdOrientation.Vertical:
+                tabSubscriptionInfo1.Content ??= new SubscriptionInfoView();
                 tabProfiles1.Content ??= new ProfilesView();
                 tabMsgView1.Content ??= new MsgView();
                 tabClashProxies1.Content ??= new ClashProxiesView();
                 tabClashConnections1.Content ??= new ClashConnectionsView();
+                ApplySubscriptionDashboardVisibility(_config.UiItem.ShowSubscriptionDashboard);
                 gridMain1.Visibility = Visibility.Visible;
                 break;
 
@@ -133,6 +135,12 @@ public partial class MainWindow
               .AsObservable()
               .ObserveOn(RxSchedulers.MainThreadScheduler)
               .Subscribe(async content => await DelegateSnackMsg(content))
+              .DisposeWith(disposables);
+
+            AppEvents.SubscriptionDashboardVisibilityChanged
+              .AsObservable()
+              .ObserveOn(RxSchedulers.MainThreadScheduler)
+              .Subscribe(async visible => await SetSubscriptionDashboardVisibility(visible))
               .DisposeWith(disposables);
 
             AppEvents.AppExitRequested
@@ -319,7 +327,7 @@ public partial class MainWindow
 
     private void MenuPromotion_Click(object sender, RoutedEventArgs e)
     {
-        ProcUtils.ProcessStart($"{Utils.Base64Decode(Global.PromotionUrl)}?t={DateTime.Now.Ticks}");
+        ProcUtils.ProcessStart(Utils.Base64Decode(Global.PromotionUrl));
     }
 
     private void MenuSettingsSetUWP_Click(object sender, RoutedEventArgs e)
@@ -421,10 +429,31 @@ public partial class MainWindow
             }
             else if (_config.UiItem.MainGirdOrientation == EGirdOrientation.Vertical)
             {
-                gridMain1.RowDefinitions[0].Height = new GridLength(_config.UiItem.MainGirdHeight1, GridUnitType.Star);
-                gridMain1.RowDefinitions[2].Height = new GridLength(_config.UiItem.MainGirdHeight2, GridUnitType.Star);
+                gridMainRight1.RowDefinitions[0].Height = new GridLength(_config.UiItem.MainGirdHeight1, GridUnitType.Star);
+                gridMainRight1.RowDefinitions[2].Height = new GridLength(_config.UiItem.MainGirdHeight2, GridUnitType.Star);
             }
         }
+    }
+
+    private void ApplySubscriptionDashboardVisibility(bool visible)
+    {
+        if (_config.UiItem.MainGirdOrientation != EGirdOrientation.Vertical)
+        {
+            return;
+        }
+
+        tabSubscriptionInfo1.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        subscriptionDashboardSplitter1.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        subscriptionDashboardColumn1.MinWidth = visible ? 280 : 0;
+        subscriptionDashboardColumn1.Width = visible ? new GridLength(38, GridUnitType.Star) : new GridLength(0);
+        subscriptionDashboardSplitterColumn1.Width = visible ? new GridLength(8) : new GridLength(0);
+    }
+
+    private async Task SetSubscriptionDashboardVisibility(bool visible)
+    {
+        _config.UiItem.ShowSubscriptionDashboard = visible;
+        ApplySubscriptionDashboardVisibility(visible);
+        await ConfigHandler.SaveConfig(_config);
     }
 
     private void StorageUI()
@@ -437,7 +466,7 @@ public partial class MainWindow
         }
         else if (_config.UiItem.MainGirdOrientation == EGirdOrientation.Vertical)
         {
-            ConfigHandler.SaveMainGirdHeight(_config, gridMain1.RowDefinitions[0].ActualHeight, gridMain1.RowDefinitions[2].ActualHeight);
+            ConfigHandler.SaveMainGirdHeight(_config, gridMainRight1.RowDefinitions[0].ActualHeight, gridMainRight1.RowDefinitions[2].ActualHeight);
         }
     }
 

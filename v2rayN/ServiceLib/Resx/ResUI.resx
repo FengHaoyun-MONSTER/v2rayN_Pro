@@ -418,7 +418,7 @@
     <value>Option Setting</value>
   </data>
   <data name="menuPromotion" xml:space="preserve">
-    <value>Promotion</value>
+    <value>Earn money</value>
   </data>
   <data name="menuReload" xml:space="preserve">
     <value>Reload</value>
@@ -910,7 +910,7 @@
     <value>Enable sorting Configurations by drag-n-drop (requires restart)</value>
   </data>
   <data name="TbAutoRefresh" xml:space="preserve">
-    <value>Auto refresh</value>
+    <value>Auto-refresh logs</value>
   </data>
   <data name="SpeedtestingSkip" xml:space="preserve">
     <value>Skip test</value>
@@ -1768,7 +1768,7 @@ The "Get Certificate" action may fail if a self-signed certificate is used or if
     <value>Not Support</value>
   </data>
   <data name="LvTestIpInfo" xml:space="preserve">
-    <value>IP Info</value>
+    <value>Region</value>
   </data>
   <data name="menuNewUpdate" xml:space="preserve">
     <value>New Update</value>

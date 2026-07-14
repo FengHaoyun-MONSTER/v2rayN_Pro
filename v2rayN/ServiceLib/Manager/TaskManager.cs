@@ -103,7 +103,7 @@ public class TaskManager
 
         foreach (var item in lstSubs)
         {
-            await SubscriptionHandler.UpdateProcess(_config, item.Id, true, async (success, msg) =>
+            var success = await SubscriptionHandler.UpdateProcess(_config, item.Id, true, async (success, msg) =>
             {
                 await _updateFunc?.Invoke(success, msg);
                 if (success)
@@ -111,6 +111,10 @@ public class TaskManager
                     Logging.SaveLog($"Update subscription end. {msg}");
                 }
             });
+            if (success)
+            {
+                AppEvents.SubscriptionAutoSpeedtestRequested.Publish();
+            }
             item.UpdateTime = updateTime;
             await ConfigHandler.AddSubItem(_config, item);
             await Task.Delay(1000);

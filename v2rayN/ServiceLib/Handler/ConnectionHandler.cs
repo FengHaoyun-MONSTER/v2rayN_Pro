@@ -133,4 +133,48 @@ public static class ConnectionHandler
             return null;
         }
     }
+
+    /// <summary>
+    /// Gets Cloudflare colo region through specified proxy.
+    /// </summary>
+    public static async Task<string> GetCloudflareRegion(IWebProxy? webProxy)
+    {
+        foreach (var url in CloudflareColoMapper.TraceUrls)
+        {
+            try
+            {
+                var result = await GetCloudflareTrace(url, webProxy).ConfigureAwait(false);
+                var region = CloudflareColoMapper.FromTrace(result);
+                if (region != CloudflareColoMapper.Unknown)
+                {
+                    return region;
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        return CloudflareColoMapper.Unknown;
+    }
+
+    private static async Task<string?> GetCloudflareTrace(string url, IWebProxy? webProxy)
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var client = new HttpClient(new SocketsHttpHandler()
+        {
+            Proxy = webProxy,
+            UseProxy = webProxy != null,
+            AutomaticDecompression = DecompressionMethods.All,
+        });
+        client.DefaultRequestHeaders.UserAgent.TryParseAdd(Utils.GetVersion(false));
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url)
+        {
+            Version = HttpVersion.Version11,
+            VersionPolicy = HttpVersionPolicy.RequestVersionExact,
+        };
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false);
+        return await response.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
+    }
 }

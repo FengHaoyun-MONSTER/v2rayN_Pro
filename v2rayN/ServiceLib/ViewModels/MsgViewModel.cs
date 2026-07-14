@@ -18,7 +18,7 @@ public class MsgViewModel : MyReactiveObject
         _config = AppManager.Instance.Config;
         _updateView = updateView;
         MsgFilter = _config.MsgUIItem.MainMsgFilter ?? string.Empty;
-        AutoRefresh = _config.MsgUIItem.AutoRefresh ?? true;
+        AutoRefresh = _config.MsgUIItem.AutoRefresh ?? false;
 
         this.WhenAnyValue(
            x => x.MsgFilter)

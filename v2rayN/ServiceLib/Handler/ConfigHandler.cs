@@ -2004,6 +2004,7 @@ public static class ConfigHandler
         else
         {
             item.Remarks = subItem.Remarks;
+            item.AutoRemarks = subItem.AutoRemarks;
             item.Url = subItem.Url;
             item.MoreUrl = subItem.MoreUrl;
             item.Enabled = subItem.Enabled;
@@ -2012,6 +2013,13 @@ public static class ConfigHandler
             item.Sort = subItem.Sort;
             item.Filter = subItem.Filter;
             item.UpdateTime = subItem.UpdateTime;
+            item.TrafficUpload = subItem.TrafficUpload;
+            item.TrafficDownload = subItem.TrafficDownload;
+            item.TrafficTotal = subItem.TrafficTotal;
+            item.ExpireTime = subItem.ExpireTime;
+            item.Announce = subItem.Announce;
+            item.ProfileWebPageUrl = subItem.ProfileWebPageUrl;
+            item.SupportUrl = subItem.SupportUrl;
             item.ConvertTarget = subItem.ConvertTarget;
             item.PrevProfile = subItem.PrevProfile;
             item.NextProfile = subItem.NextProfile;

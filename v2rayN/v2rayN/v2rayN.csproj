@@ -24,6 +24,16 @@
 
 	<ItemGroup>
 		<AdditionalFiles Include="app.manifest" />
+		<Content Include="Resources\CloudflareST\cfst.exe">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+			<TargetPath>bin\cfst\cfst.exe</TargetPath>
+		</Content>
+		<Content Include="Resources\CloudflareST\ip.txt">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+			<TargetPath>bin\cfst\ip.txt</TargetPath>
+		</Content>
 		<EmbeddedResource Include="Resources\v2rayN.ico">
 			<CopyToOutputDirectory>Never</CopyToOutputDirectory>
 		</EmbeddedResource>

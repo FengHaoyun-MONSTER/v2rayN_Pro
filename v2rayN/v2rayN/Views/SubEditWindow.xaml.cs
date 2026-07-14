@@ -47,7 +47,21 @@ public partial class SubEditWindow
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        txtRemarks.Focus();
+        txtUrl.Focus();
+    }
+
+    private void TogAdvanced_Checked(object sender, RoutedEventArgs e)
+    {
+        togAdvanced.Content = "∧";
+        togAdvanced.ToolTip = "折叠更多设置";
+        Height = 650;
+    }
+
+    private void TogAdvanced_Unchecked(object sender, RoutedEventArgs e)
+    {
+        togAdvanced.Content = "∨";
+        togAdvanced.ToolTip = "展开更多设置";
+        Height = 230;
     }
 
     private async void BtnSelectPrevProfile_Click(object sender, RoutedEventArgs e)

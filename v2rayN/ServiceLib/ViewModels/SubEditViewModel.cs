@@ -2,6 +2,9 @@ namespace ServiceLib.ViewModels;
 
 public class SubEditViewModel : MyReactiveObject
 {
+    private readonly string _originalRemarks;
+    private readonly bool _originalAutoRemarks;
+
     [Reactive]
     public SubItem SelectedSource { get; set; }
 
@@ -18,21 +21,17 @@ public class SubEditViewModel : MyReactiveObject
         });
 
         SelectedSource = subItem.Id.IsNullOrEmpty() ? subItem : JsonUtils.DeepCopy(subItem);
+        _originalRemarks = SelectedSource.Remarks;
+        _originalAutoRemarks = SelectedSource.AutoRemarks;
     }
 
     private async Task SaveSubAsync()
     {
-        var remarks = SelectedSource.Remarks;
-        if (remarks.IsNullOrEmpty())
-        {
-            NoticeManager.Instance.Enqueue(ResUI.PleaseFillRemarks);
-            return;
-        }
-
         var url = SelectedSource.Url;
+        Uri? uri = null;
         if (url.IsNotEmpty())
         {
-            var uri = Utils.TryUri(url);
+            uri = Utils.TryUri(url);
             if (uri == null)
             {
                 NoticeManager.Instance.Enqueue(ResUI.InvalidUrlTip);
@@ -44,6 +43,25 @@ public class SubEditViewModel : MyReactiveObject
                 NoticeManager.Instance.Enqueue(ResUI.InsecureUrlProtocol);
                 //return;
             }
+        }
+
+        var remarks = SelectedSource.Remarks;
+        if (remarks.IsNullOrEmpty())
+        {
+            if (uri != null)
+            {
+                SelectedSource.Remarks = uri.IdnHost.IsNotEmpty() ? uri.IdnHost : "新订阅";
+                SelectedSource.AutoRemarks = true;
+            }
+            else
+            {
+                NoticeManager.Instance.Enqueue(ResUI.PleaseFillRemarks);
+                return;
+            }
+        }
+        else if (!_originalAutoRemarks || !string.Equals(remarks, _originalRemarks, StringComparison.Ordinal))
+        {
+            SelectedSource.AutoRemarks = false;
         }
 
         if (await ConfigHandler.AddSubItem(_config, SelectedSource) == 0)
