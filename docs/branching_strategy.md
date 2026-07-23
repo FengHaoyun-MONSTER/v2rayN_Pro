@@ -11,7 +11,8 @@
 | `release/<version>` | 发布前冻结、修复和打包 | 仅发布修复 |
 
 `master` 保留为历史基线，不再承载新的定制开发。GitHub 默认分支使用
-`custom/main`。
+`custom/main`。该分支启用保护规则，禁止强制推送和删除；功能与上游升级
+仍应通过 Pull Request 合并。
 
 ## 远程仓库
 
