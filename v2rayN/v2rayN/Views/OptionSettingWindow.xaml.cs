@@ -236,4 +236,5 @@ public partial class OptionSettingWindow
 
         txtCustomSystemProxyPacPath.Text = fileName;
     }
+
 }

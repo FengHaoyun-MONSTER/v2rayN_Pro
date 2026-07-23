@@ -27,6 +27,28 @@
                 <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesignTheme.Popupbox.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <BooleanToVisibilityConverter x:Key="BoolToVisConverter" />
+            <Style
+                x:Key="WorkspaceNavigationButton"
+                BasedOn="{StaticResource MaterialDesignFlatButton}"
+                TargetType="{x:Type Button}">
+                <Setter Property="Height" Value="40" />
+                <Setter Property="MinWidth" Value="72" />
+                <Setter Property="Margin" Value="2,0" />
+                <Setter Property="Padding" Value="14,0" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0,0,0,2" />
+                <Setter Property="FontWeight" Value="Normal" />
+                <Setter Property="Opacity" Value="0.72" />
+                <Style.Triggers>
+                    <Trigger Property="Tag" Value="Active">
+                        <Setter Property="BorderBrush" Value="{DynamicResource MaterialDesign.Brush.Primary.Light}" />
+                        <Setter Property="Foreground" Value="{DynamicResource MaterialDesign.Brush.Primary.Light}" />
+                        <Setter Property="FontWeight" Value="SemiBold" />
+                        <Setter Property="Opacity" Value="1" />
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
         </ResourceDictionary>
     </Window.Resources>
 
@@ -45,6 +67,26 @@
                         ClipToBounds="True"
                         KeyboardNavigation.TabNavigation="Continue"
                         Style="{StaticResource MaterialDesignToolBar}">
+                        <Button
+                            x:Name="btnHome"
+                            AutomationProperties.Name="首页"
+                            Content="首页"
+                            Style="{StaticResource WorkspaceNavigationButton}"
+                            Tag="Active"
+                            ToolTip="首页" />
+                        <Button
+                            x:Name="btnAddSubscription"
+                            AutomationProperties.Name="添加订阅"
+                            Content="添加订阅"
+                            Style="{StaticResource WorkspaceNavigationButton}"
+                            ToolTip="添加订阅" />
+                        <Button
+                            x:Name="btnProxy"
+                            AutomationProperties.Name="代理"
+                            Content="代理"
+                            Style="{StaticResource WorkspaceNavigationButton}"
+                            ToolTip="代理" />
+                        <Separator />
                         <Menu Margin="0,1" Style="{StaticResource ToolbarMenu}">
                             <MenuItem Padding="{StaticResource MarginLeftRight8}" AutomationProperties.Name="{x:Static resx:ResUI.menuServers}">
                                 <MenuItem.Header>
@@ -307,10 +349,12 @@
                         </Menu>
 
                         <materialDesign:PopupBox
+                            x:Name="popupAppearance"
                             Padding="-2"
                             HorizontalAlignment="Right"
                             StaysOpen="True"
-                            Style="{StaticResource MaterialDesignToolForegroundPopupBox}">
+                            Style="{StaticResource MaterialDesignToolForegroundPopupBox}"
+                            ToggleContent="外观">
                             <ContentControl x:Name="pbTheme" />
                         </materialDesign:PopupBox>
 
@@ -326,7 +370,25 @@
                 <view:StatusBarView DockPanel.Dock="Bottom" />
 
                 <Grid>
-                    <Grid x:Name="gridMain" Visibility="Collapsed">
+                    <Image
+                        x:Name="workspaceBackgroundImage"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch"
+                        IsHitTestVisible="False"
+                        Stretch="UniformToFill"
+                        Visibility="Collapsed" />
+                    <Border
+                        x:Name="workspaceBackgroundOverlay"
+                        Background="{DynamicResource MaterialDesignPaper}"
+                        IsHitTestVisible="False"
+                        Opacity="0" />
+
+                    <Grid x:Name="workspaceHome">
+                        <ContentControl x:Name="tabSubscriptionInfo1" />
+                    </Grid>
+
+                    <Grid x:Name="workspaceProxy" Visibility="Collapsed">
+                        <Grid x:Name="gridMain" Visibility="Collapsed">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="1*" />
                             <ColumnDefinition Width="10" />
@@ -337,23 +399,15 @@
                         <TabControl
                             x:Name="tabMain"
                             Grid.Column="2"
+                            Background="Transparent"
                             HorizontalContentAlignment="Left">
                             <TabItem x:Name="tabMsgView" Header="{x:Static resx:ResUI.MsgInformationTitle}" />
                             <TabItem x:Name="tabClashProxies" Header="{x:Static resx:ResUI.TbProxies}" />
                             <TabItem x:Name="tabClashConnections" Header="{x:Static resx:ResUI.TbConnections}" />
                         </TabControl>
                     </Grid>
-                    <Grid x:Name="gridMain1" Visibility="Collapsed">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition x:Name="subscriptionDashboardColumn1" Width="38*" MinWidth="280" />
-                            <ColumnDefinition x:Name="subscriptionDashboardSplitterColumn1" Width="8" />
-                            <ColumnDefinition Width="62*" />
-                        </Grid.ColumnDefinitions>
-
-                        <ContentControl x:Name="tabSubscriptionInfo1" Grid.Column="0" />
-                        <GridSplitter x:Name="subscriptionDashboardSplitter1" Grid.Column="1" HorizontalAlignment="Stretch" />
-
-                        <Grid x:Name="gridMainRight1" Grid.Column="2">
+                        <Grid x:Name="gridMain1" Visibility="Collapsed">
+                            <Grid x:Name="gridMainRight1">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="1*" />
                                 <RowDefinition Height="8" />
@@ -364,6 +418,7 @@
                             <TabControl
                                 x:Name="tabMain1"
                                 Grid.Row="2"
+                                Background="Transparent"
                                 materialDesign:NavigationRailAssist.ShowSelectionBackground="True"
                                 Style="{StaticResource MaterialDesignNavigationRailTabControl}"
                                 TabStripPlacement="Left">
@@ -403,9 +458,10 @@
                             </TabControl>
                         </Grid>
                     </Grid>
-                    <Grid x:Name="gridMain2" Visibility="Collapsed">
+                        <Grid x:Name="gridMain2" Visibility="Collapsed">
                         <TabControl
                             x:Name="tabMain2"
+                            Background="Transparent"
                             materialDesign:NavigationRailAssist.ShowSelectionBackground="True"
                             Style="{StaticResource MaterialDesignNavigationRailTabControl}"
                             TabStripPlacement="Left">
@@ -454,6 +510,7 @@
                                 </TabItem.Header>
                             </TabItem>
                         </TabControl>
+                        </Grid>
                     </Grid>
                     <materialDesign:Snackbar x:Name="MainSnackbar" MessageQueue="{materialDesign:MessageQueue}" />
                 </Grid>

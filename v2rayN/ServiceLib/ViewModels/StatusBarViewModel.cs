@@ -385,6 +385,8 @@ public class StatusBarViewModel : MyReactiveObject
     {
         if (_config.SystemProxyItem.SysProxyType == type)
         {
+            SystemProxySelected = (int)type;
+            await ChangeSystemProxyAsync(type, true);
             return;
         }
         _config.SystemProxyItem.SysProxyType = type;

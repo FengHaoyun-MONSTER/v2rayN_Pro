@@ -3,6 +3,12 @@
 ###############################################################################
 * text=auto
 
+# Build scripts must remain executable by Unix shells after a Windows checkout.
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+.gitattributes text eol=lf
+
 ###############################################################################
 # Set default behavior for command prompt diff.
 #

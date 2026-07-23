@@ -1,7 +1,10 @@
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Media.Imaging;
 using MaterialDesignThemes.Wpf;
 using v2rayN.Manager;
+using XamlAnimatedGif;
 
 namespace v2rayN.Views;
 
@@ -10,6 +13,10 @@ public partial class MainWindow
     private static Config _config;
     private CheckUpdateView? _checkUpdateView;
     private BackupAndRestoreView? _backupAndRestoreView;
+    private readonly SemaphoreSlim _workspacePageSaveLock = new(1, 1);
+    private bool _hasWorkspaceBackground;
+    private bool _isWorkspaceBackgroundAnimated;
+    private bool _startupSubscriptionPromptChecked;
 
     public MainWindow()
     {
@@ -20,6 +27,8 @@ public partial class MainWindow
 
         App.Current.SessionEnding += Current_SessionEnding;
         Closing += MainWindow_Closing;
+        StateChanged += (_, _) => UpdateWorkspaceBackgroundAnimationState();
+        IsVisibleChanged += (_, _) => UpdateWorkspaceBackgroundAnimationState();
         PreviewKeyDown += MainWindow_PreviewKeyDown;
         menuSettingsSetUWP.Click += MenuSettingsSetUWP_Click;
         menuPromotion.Click += MenuPromotion_Click;
@@ -27,8 +36,14 @@ public partial class MainWindow
         menuCheckUpdate.Click += MenuCheckUpdate_Click;
         btnNewUpdate.Click += MenuCheckUpdate_Click;
         menuBackupAndRestore.Click += MenuBackupAndRestore_Click;
+        btnHome.Click += async (_, _) => await SetMainWorkspacePage(EMainWorkspacePage.Home);
+        btnAddSubscription.Click += (_, _) => AppEvents.AddSubscriptionRequested.Publish();
+        btnProxy.Click += async (_, _) => await SetMainWorkspacePage(EMainWorkspacePage.Proxy);
+        AnimationBehavior.AddLoadedHandler(workspaceBackgroundImage, (_, _) => UpdateWorkspaceBackgroundAnimationState());
+        AnimationBehavior.AddErrorHandler(workspaceBackgroundImage, WorkspaceBackgroundAnimation_Error);
 
         ViewModel = new MainWindowViewModel(UpdateViewHandler);
+        tabSubscriptionInfo1.Content ??= new SubscriptionInfoView();
 
         switch (_config.UiItem.MainGirdOrientation)
         {
@@ -41,12 +56,10 @@ public partial class MainWindow
                 break;
 
             case EGirdOrientation.Vertical:
-                tabSubscriptionInfo1.Content ??= new SubscriptionInfoView();
                 tabProfiles1.Content ??= new ProfilesView();
                 tabMsgView1.Content ??= new MsgView();
                 tabClashProxies1.Content ??= new ClashProxiesView();
                 tabClashConnections1.Content ??= new ClashConnectionsView();
-                ApplySubscriptionDashboardVisibility(_config.UiItem.ShowSubscriptionDashboard);
                 gridMain1.Visibility = Visibility.Visible;
                 break;
 
@@ -59,7 +72,11 @@ public partial class MainWindow
                 gridMain2.Visibility = Visibility.Visible;
                 break;
         }
-        pbTheme.Content ??= new ThemeSettingView();
+        ApplyMainWorkspacePage(_config.UiItem.MainWorkspacePage);
+        ApplyWorkspaceBackground();
+        var themeSettingView = new ThemeSettingView();
+        themeSettingView.WorkspaceBackgroundRequested += (_, _) => OpenWorkspaceBackgroundSetting();
+        pbTheme.Content = themeSettingView;
 
         this.WhenActivated(disposables =>
         {
@@ -135,12 +152,6 @@ public partial class MainWindow
               .AsObservable()
               .ObserveOn(RxSchedulers.MainThreadScheduler)
               .Subscribe(async content => await DelegateSnackMsg(content))
-              .DisposeWith(disposables);
-
-            AppEvents.SubscriptionDashboardVisibilityChanged
-              .AsObservable()
-              .ObserveOn(RxSchedulers.MainThreadScheduler)
-              .Subscribe(async visible => await SetSubscriptionDashboardVisibility(visible))
               .DisposeWith(disposables);
 
             AppEvents.AppExitRequested
@@ -228,7 +239,12 @@ public partial class MainWindow
                 return new RoutingSettingWindow().ShowDialog() ?? false;
 
             case EViewAction.OptionSettingWindow:
-                return new OptionSettingWindow().ShowDialog() ?? false;
+                var result = new OptionSettingWindow().ShowDialog() ?? false;
+                if (result)
+                {
+                    ApplyWorkspaceBackground();
+                }
+                return result;
 
             case EViewAction.FullConfigTemplateWindow:
                 return new FullConfigTemplateWindow().ShowDialog() ?? false;
@@ -418,6 +434,39 @@ public partial class MainWindow
         RestoreUI();
     }
 
+    protected override void OnContentRendered(EventArgs e)
+    {
+        base.OnContentRendered(e);
+        if (_startupSubscriptionPromptChecked)
+        {
+            return;
+        }
+
+        _startupSubscriptionPromptChecked = true;
+        _ = PromptForSubscriptionWhenEmptyAsync();
+    }
+
+    private async Task PromptForSubscriptionWhenEmptyAsync()
+    {
+        try
+        {
+            var subscriptions = await AppManager.Instance.SubItems();
+            var profiles = await AppManager.Instance.ProfileItems(string.Empty);
+            if ((subscriptions?.Count ?? 0) > 0 || (profiles?.Count ?? 0) > 0)
+            {
+                return;
+            }
+
+            await SetMainWorkspacePage(EMainWorkspacePage.Home);
+            ShowHideWindow(true);
+            AppEvents.AddSubscriptionRequested.Publish();
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog("Check empty startup subscription failed", ex);
+        }
+    }
+
     private void RestoreUI()
     {
         if (_config.UiItem.MainGirdHeight1 > 0 && _config.UiItem.MainGirdHeight2 > 0)
@@ -435,25 +484,163 @@ public partial class MainWindow
         }
     }
 
-    private void ApplySubscriptionDashboardVisibility(bool visible)
+    private void ApplyMainWorkspacePage(EMainWorkspacePage page)
     {
-        if (_config.UiItem.MainGirdOrientation != EGirdOrientation.Vertical)
+        var showHome = page == EMainWorkspacePage.Home;
+        workspaceHome.Visibility = showHome ? Visibility.Visible : Visibility.Collapsed;
+        workspaceProxy.Visibility = showHome ? Visibility.Collapsed : Visibility.Visible;
+        btnHome.Tag = showHome ? "Active" : null;
+        btnProxy.Tag = showHome ? null : "Active";
+        UpdateWorkspaceBackgroundOverlay(page);
+    }
+
+    private void ApplyWorkspaceBackground()
+    {
+        var uiItem = AppManager.Instance.Config.UiItem;
+        var imagePath = uiItem.WorkspaceBackgroundImage;
+        if (imagePath.IsNotEmpty() && !Path.IsPathRooted(imagePath))
+        {
+            imagePath = Utils.GetConfigPath(imagePath);
+        }
+
+        ClearWorkspaceBackground();
+        workspaceBackgroundImage.Opacity = Math.Clamp(uiItem.WorkspaceBackgroundOpacity, 0, 1);
+
+        if (imagePath.IsNotEmpty() && File.Exists(imagePath))
+        {
+            _isWorkspaceBackgroundAnimated = string.Equals(
+                Path.GetExtension(imagePath), ".gif", StringComparison.OrdinalIgnoreCase);
+            RenderOptions.SetBitmapScalingMode(
+                workspaceBackgroundImage,
+                _isWorkspaceBackgroundAnimated ? BitmapScalingMode.LowQuality : BitmapScalingMode.HighQuality);
+
+            if (_isWorkspaceBackgroundAnimated)
+            {
+                _hasWorkspaceBackground = true;
+                workspaceBackgroundImage.Visibility = Visibility.Visible;
+                AnimationBehavior.SetAutoStart(workspaceBackgroundImage, true);
+                AnimationBehavior.SetRepeatBehavior(workspaceBackgroundImage, RepeatBehavior.Forever);
+                AnimationBehavior.SetSourceUri(
+                    workspaceBackgroundImage,
+                    new Uri(Path.GetFullPath(imagePath), UriKind.Absolute));
+            }
+            else
+            {
+                workspaceBackgroundImage.Source = LoadWorkspaceBackground(imagePath);
+                _hasWorkspaceBackground = workspaceBackgroundImage.Source is not null;
+                workspaceBackgroundImage.Visibility = _hasWorkspaceBackground
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            }
+        }
+
+        UpdateWorkspaceBackgroundOverlay(_config.UiItem.MainWorkspacePage);
+        UpdateWorkspaceBackgroundAnimationState();
+    }
+
+    private void OpenWorkspaceBackgroundSetting()
+    {
+        popupAppearance.IsPopupOpen = false;
+        var window = new WorkspaceBackgroundSettingWindow { Owner = this };
+        if (window.ShowDialog() == true)
+        {
+            ApplyWorkspaceBackground();
+        }
+    }
+
+    private void UpdateWorkspaceBackgroundOverlay(EMainWorkspacePage page)
+    {
+        var hasVisibleBackground = _hasWorkspaceBackground && workspaceBackgroundImage.Opacity > 0;
+        workspaceBackgroundOverlay.Opacity = hasVisibleBackground
+            ? page == EMainWorkspacePage.Home ? 0.12 : 0.62
+            : 0;
+    }
+
+    private void ClearWorkspaceBackground()
+    {
+        AnimationBehavior.SetSourceUri(workspaceBackgroundImage, null!);
+        workspaceBackgroundImage.Source = null;
+        workspaceBackgroundImage.Visibility = Visibility.Collapsed;
+        _hasWorkspaceBackground = false;
+        _isWorkspaceBackgroundAnimated = false;
+    }
+
+    private void UpdateWorkspaceBackgroundAnimationState()
+    {
+        if (!_isWorkspaceBackgroundAnimated)
         {
             return;
         }
 
-        tabSubscriptionInfo1.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-        subscriptionDashboardSplitter1.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-        subscriptionDashboardColumn1.MinWidth = visible ? 280 : 0;
-        subscriptionDashboardColumn1.Width = visible ? new GridLength(38, GridUnitType.Star) : new GridLength(0);
-        subscriptionDashboardSplitterColumn1.Width = visible ? new GridLength(8) : new GridLength(0);
+        var animator = AnimationBehavior.GetAnimator(workspaceBackgroundImage);
+        if (animator is null)
+        {
+            return;
+        }
+
+        if (IsVisible && WindowState != WindowState.Minimized && workspaceBackgroundImage.Opacity > 0)
+        {
+            animator.Play();
+        }
+        else
+        {
+            animator.Pause();
+        }
     }
 
-    private async Task SetSubscriptionDashboardVisibility(bool visible)
+    private void WorkspaceBackgroundAnimation_Error(DependencyObject sender, AnimationErrorEventArgs e)
     {
-        _config.UiItem.ShowSubscriptionDashboard = visible;
-        ApplySubscriptionDashboardVisibility(visible);
-        await ConfigHandler.SaveConfig(_config);
+        Logging.SaveLog($"Workspace GIF background {e.Kind.ToString().ToLowerInvariant()} failed", e.Exception);
+        ClearWorkspaceBackground();
+        UpdateWorkspaceBackgroundOverlay(_config.UiItem.MainWorkspacePage);
+    }
+
+    private static ImageSource? LoadWorkspaceBackground(string? imagePath)
+    {
+        if (imagePath.IsNullOrEmpty() || !File.Exists(imagePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            var image = new BitmapImage();
+            image.BeginInit();
+            image.CacheOption = BitmapCacheOption.OnLoad;
+            image.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
+            image.DecodePixelWidth = 2560;
+            image.UriSource = new Uri(Path.GetFullPath(imagePath), UriKind.Absolute);
+            image.EndInit();
+            image.Freeze();
+            return image;
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog("Load workspace background failed", ex);
+            return null;
+        }
+    }
+
+    private async Task SetMainWorkspacePage(EMainWorkspacePage page)
+    {
+        if (_config.UiItem.MainWorkspacePage == page)
+        {
+            ApplyMainWorkspacePage(page);
+            return;
+        }
+
+        _config.UiItem.MainWorkspacePage = page;
+        ApplyMainWorkspacePage(page);
+
+        await _workspacePageSaveLock.WaitAsync();
+        try
+        {
+            await ConfigHandler.SaveConfig(_config);
+        }
+        finally
+        {
+            _workspacePageSaveLock.Release();
+        }
     }
 
     private void StorageUI()

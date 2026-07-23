@@ -90,7 +90,9 @@ public class UIItem
     public int MainGirdHeight1 { get; set; }
     public int MainGirdHeight2 { get; set; }
     public EGirdOrientation MainGirdOrientation { get; set; } = EGirdOrientation.Vertical;
-    public bool ShowSubscriptionDashboard { get; set; } = true;
+    public EMainWorkspacePage MainWorkspacePage { get; set; } = EMainWorkspacePage.Home;
+    public string WorkspaceBackgroundImage { get; set; } = WorkspaceBackgroundHandler.DefaultImageFileName;
+    public double WorkspaceBackgroundOpacity { get; set; } = 1.0;
     public string? ColorPrimaryName { get; set; }
     public string? CurrentTheme { get; set; }
     public string CurrentLanguage { get; set; }

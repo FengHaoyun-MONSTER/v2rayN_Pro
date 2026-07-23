@@ -10,6 +10,7 @@
     d:DesignHeight="450"
     d:DesignWidth="800"
     x:DataType="vms:ClashProxiesViewModel"
+    Background="Transparent"
     mc:Ignorable="d">
     <UserControl.Resources>
         <conv:DelayColorConverter x:Key="DelayColorConverter" />

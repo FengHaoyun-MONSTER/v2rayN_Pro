@@ -26,6 +26,15 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
+            <Button
+                x:Name="btnWorkspaceBackground"
+                Grid.Row="0"
+                Grid.ColumnSpan="2"
+                Margin="0,0,0,4"
+                HorizontalContentAlignment="Left"
+                Content="背景图片"
+                Style="{StaticResource MaterialDesignFlatButton}" />
+
             <TextBlock
                 Grid.Row="1"
                 Grid.Column="0"

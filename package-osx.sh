@@ -3,18 +3,73 @@
 Arch="$1"
 OutputPath="$2"
 Version="$3"
+CFST_VERSION="${CFST_VERSION:-v2.3.5}"
+
+set -euo pipefail
 
 FileName="v2rayN-${Arch}.zip"
-wget -nv -O $FileName "https://github.com/2dust/v2rayN-core-bin/raw/refs/heads/master/$FileName"
-7z x $FileName
-cp -rf v2rayN-${Arch}/* $OutputPath
+CoreDirectory="v2rayN-${Arch}"
+rm -rf "$CoreDirectory" "$FileName"
+wget -nv -O "$FileName" "https://github.com/2dust/v2rayN-core-bin/raw/refs/heads/master/$FileName"
+7z x -y "$FileName"
+cp -rf "$CoreDirectory/." "$OutputPath/"
+
+case "$Arch" in
+  macos-arm64)
+    CFST_ARCH="arm64"
+    ;;
+  macos-64)
+    CFST_ARCH="amd64"
+    ;;
+  *)
+    echo "Unsupported macOS architecture for CloudflareST: $Arch" >&2
+    exit 1
+    ;;
+esac
+
+CFST_FILE="cfst_darwin_${CFST_ARCH}.zip"
+CFST_URL="https://github.com/XIU2/CloudflareSpeedTest/releases/download/${CFST_VERSION}/${CFST_FILE}"
+CFST_TEMP="cfst-package-${CFST_ARCH}"
+rm -rf "$CFST_TEMP"
+mkdir -p "$CFST_TEMP" "$OutputPath/bin/cfst"
+curl --fail --location --retry 3 --output "$CFST_FILE" "$CFST_URL"
+unzip -q -o "$CFST_FILE" -d "$CFST_TEMP"
+cp -f "$CFST_TEMP/cfst" "$OutputPath/bin/cfst/cfst"
+cp -f "$CFST_TEMP/ip.txt" "$OutputPath/bin/cfst/ip.txt"
+chmod 755 "$OutputPath/bin/cfst/cfst"
 
 PackagePath="v2rayN-Package-${Arch}"
+rm -rf "$PackagePath"
 mkdir -p "$PackagePath/v2rayN.app/Contents/Resources"
 cp -rf "$OutputPath" "$PackagePath/v2rayN.app/Contents/MacOS"
 cp -f "$PackagePath/v2rayN.app/Contents/MacOS/v2rayN.icns" "$PackagePath/v2rayN.app/Contents/Resources/AppIcon.icns"
 echo "When this file exists, app will not store configs under this folder" > "$PackagePath/v2rayN.app/Contents/MacOS/NotStoreConfigHere.txt"
 chmod +x "$PackagePath/v2rayN.app/Contents/MacOS/v2rayN"
+chmod +x "$PackagePath/v2rayN.app/Contents/MacOS/bin/cfst/cfst"
+
+RequiredFiles=(
+  "$PackagePath/v2rayN.app/Contents/MacOS/bin/Country.mmdb"
+  "$PackagePath/v2rayN.app/Contents/MacOS/bin/geoip.dat"
+  "$PackagePath/v2rayN.app/Contents/MacOS/bin/geoip.metadb"
+  "$PackagePath/v2rayN.app/Contents/MacOS/bin/geoip-only-cn-private.dat"
+  "$PackagePath/v2rayN.app/Contents/MacOS/bin/geosite.dat"
+  "$PackagePath/v2rayN.app/Contents/MacOS/bin/mihomo/mihomo"
+  "$PackagePath/v2rayN.app/Contents/MacOS/bin/sing_box/sing-box"
+  "$PackagePath/v2rayN.app/Contents/MacOS/bin/xray/xray"
+  "$PackagePath/v2rayN.app/Contents/MacOS/bin/cfst/cfst"
+  "$PackagePath/v2rayN.app/Contents/MacOS/bin/cfst/ip.txt"
+  "$PackagePath/v2rayN.app/Contents/MacOS/bin/srss/geoip-cn.srs"
+  "$PackagePath/v2rayN.app/Contents/MacOS/bin/srss/geosite-cn.srs"
+  "$PackagePath/v2rayN.app/Contents/MacOS/bin/srss/geosite-gfw.srs"
+  "$PackagePath/v2rayN.app/Contents/MacOS/bin/srss/geosite-google.srs"
+  "$PackagePath/v2rayN.app/Contents/MacOS/guiConfigs/default-workspace-background.gif"
+)
+for RequiredFile in "${RequiredFiles[@]}"; do
+  if [[ ! -f "$RequiredFile" ]]; then
+    echo "Missing required macOS runtime file: $RequiredFile" >&2
+    exit 1
+  fi
+done
 
 cat >"$PackagePath/v2rayN.app/Contents/Info.plist" <<-EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -54,10 +109,19 @@ cat >"$PackagePath/v2rayN.app/Contents/Info.plist" <<-EOF
   <key>NSHighResolutionCapable</key>
   <true/>
   <key>LSMinimumSystemVersion</key>
-  <string>12.7</string>
+  <string>13.7</string>
 </dict>
 </plist>
 EOF
+
+if [[ -n "${APPLE_CODESIGN_IDENTITY:-}" ]]; then
+  codesign --force --deep --options runtime --timestamp \
+    --sign "$APPLE_CODESIGN_IDENTITY" "$PackagePath/v2rayN.app"
+else
+  # Re-sign the completed bundle so newly injected native tools have a coherent signature.
+  codesign --force --deep --sign - --timestamp=none "$PackagePath/v2rayN.app"
+fi
+codesign --verify --deep --strict --verbose=2 "$PackagePath/v2rayN.app"
 
 create-dmg \
     --volname "v2rayN Installer" \

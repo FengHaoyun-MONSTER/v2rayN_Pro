@@ -18,8 +18,6 @@ public partial class ProfilesView
         lstGroup.MaxHeight = Math.Floor(SystemParameters.WorkArea.Height * 0.20 / 40) * 40;
 
         _config = AppManager.Instance.Config;
-        btnShowSubscriptionDashboard.Click += (_, _) => AppEvents.SubscriptionDashboardVisibilityChanged.Publish(true);
-        UpdateSubscriptionDashboardButton(_config.UiItem.ShowSubscriptionDashboard);
 
         btnAutofitColumnWidth.Click += BtnAutofitColumnWidth_Click;
         txtServerFilter.PreviewKeyDown += TxtServerFilter_PreviewKeyDown;
@@ -47,7 +45,6 @@ public partial class ProfilesView
             this.OneWayBind(ViewModel, vm => vm.SubItems, v => v.lstGroup.ItemsSource).DisposeWith(disposables);
             this.Bind(ViewModel, vm => vm.SelectedSub, v => v.lstGroup.SelectedItem).DisposeWith(disposables);
             this.Bind(ViewModel, vm => vm.ServerFilter, v => v.txtServerFilter.Text).DisposeWith(disposables);
-            this.BindCommand(ViewModel, vm => vm.AddSubCmd, v => v.btnAddSub).DisposeWith(disposables);
             this.BindCommand(ViewModel, vm => vm.EditSubCmd, v => v.btnEditSub).DisposeWith(disposables);
 
             //servers delete
@@ -101,11 +98,12 @@ public partial class ProfilesView
                 .Subscribe(_ => AutofitColumnWidth())
                 .DisposeWith(disposables);
 
-            AppEvents.SubscriptionDashboardVisibilityChanged
+            AppEvents.AddSubscriptionRequested
                 .AsObservable()
                 .ObserveOn(RxSchedulers.MainThreadScheduler)
-                .Subscribe(UpdateSubscriptionDashboardButton)
+                .Subscribe(async _ => await ViewModel.AddSubscription())
                 .DisposeWith(disposables);
+
         });
 
         RestoreUI();
@@ -402,13 +400,6 @@ public partial class ProfilesView
         {
             Logging.SaveLog(_tag, ex);
         }
-    }
-
-    private void UpdateSubscriptionDashboardButton(bool dashboardVisible)
-    {
-        btnShowSubscriptionDashboard.Visibility = _config.UiItem.MainGirdOrientation == EGirdOrientation.Vertical && !dashboardVisible
-            ? Visibility.Visible
-            : Visibility.Collapsed;
     }
 
     private void EnsureCountryColumnVisibleAfterAddress()

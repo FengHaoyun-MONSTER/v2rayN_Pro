@@ -12,7 +12,10 @@ public class SubscriptionInfoViewModel : MyReactiveObject
     public string RemainingTraffic { get; set; } = "-";
 
     [Reactive]
-    public string RemainingDays { get; set; } = "-";
+    public string TotalTraffic { get; set; } = "-";
+
+    [Reactive]
+    public string UsedTraffic { get; set; } = "-";
 
     [Reactive]
     public string ExpireDate { get; set; } = "-";
@@ -23,9 +26,20 @@ public class SubscriptionInfoViewModel : MyReactiveObject
     [Reactive]
     public bool HasSubscription { get; set; }
 
+    [Reactive]
+    public string SupportUrl { get; set; } = string.Empty;
+
+    [Reactive]
+    public bool HasSupportUrl { get; set; }
+
+    public ReactiveCommand<Unit, Unit> OpenSupportCmd { get; }
+
     public SubscriptionInfoViewModel()
     {
         _config = AppManager.Instance.Config;
+        OpenSupportCmd = ReactiveCommand.Create(
+            () => ProcUtils.ProcessStart(SupportUrl),
+            this.WhenAnyValue(x => x.HasSupportUrl));
 
         AppEvents.SubscriptionSelectionChanged
             .AsObservable()
@@ -52,9 +66,12 @@ public class SubscriptionInfoViewModel : MyReactiveObject
             SubscriptionName = "订阅信息";
             Announcement = "选择一个订阅分组以查看订阅信息";
             RemainingTraffic = "-";
-            RemainingDays = "-";
+            TotalTraffic = "-";
+            UsedTraffic = "-";
             ExpireDate = "-";
             LastUpdated = "尚未更新";
+            SupportUrl = string.Empty;
+            HasSupportUrl = false;
             return;
         }
 
@@ -63,6 +80,8 @@ public class SubscriptionInfoViewModel : MyReactiveObject
         Announcement = item.Announce.IsNotEmpty() ? item.Announce! : "暂无订阅公告";
 
         var usedTraffic = Math.Max(0, item.TrafficUpload) + Math.Max(0, item.TrafficDownload);
+        TotalTraffic = item.TrafficTotal > 0 ? FormatGigabytes(item.TrafficTotal) : "∞";
+        UsedTraffic = FormatGigabytes(usedTraffic);
         RemainingTraffic = item.TrafficTotal > 0
             ? FormatGigabytes(Math.Max(0, item.TrafficTotal - usedTraffic))
             : "∞";
@@ -72,25 +91,34 @@ public class SubscriptionInfoViewModel : MyReactiveObject
             try
             {
                 var expire = DateTimeOffset.FromUnixTimeSeconds(item.ExpireTime).ToLocalTime();
-                var remaining = expire - DateTimeOffset.Now;
-                RemainingDays = Math.Max(0, (int)Math.Floor(remaining.TotalDays)).ToString();
                 ExpireDate = expire.ToString("yyyy-MM-dd");
             }
             catch (ArgumentOutOfRangeException)
             {
-                RemainingDays = "-";
                 ExpireDate = "-";
             }
         }
         else
         {
-            RemainingDays = "∞";
             ExpireDate = "永久";
         }
 
         LastUpdated = item.UpdateTime > 0
             ? $"更新于 {DateTimeOffset.FromUnixTimeSeconds(item.UpdateTime).ToLocalTime():yyyy-MM-dd HH:mm}"
             : "尚未更新";
+
+        SupportUrl = NormalizeSupportUrl(item.SupportUrl);
+        HasSupportUrl = SupportUrl.IsNotEmpty();
+    }
+
+    private static string NormalizeSupportUrl(string? value)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri))
+        {
+            return string.Empty;
+        }
+
+        return uri.Scheme is "http" or "https" or "tg" ? uri.AbsoluteUri : string.Empty;
     }
 
     private static string FormatGigabytes(long bytes)

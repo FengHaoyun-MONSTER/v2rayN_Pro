@@ -9,6 +9,7 @@
     d:DesignHeight="450"
     d:DesignWidth="800"
     x:DataType="vms:ClashConnectionsViewModel"
+    Background="Transparent"
     mc:Ignorable="d">
 
     <DockPanel Margin="2">
@@ -57,6 +58,7 @@
 
         <DataGrid
             x:Name="lstConnections"
+            Background="Transparent"
             AutoGenerateColumns="False"
             BorderThickness="1"
             CanUserResizeColumns="True"

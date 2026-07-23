@@ -10,7 +10,7 @@ public sealed class CloudflareSpeedTestService
     private const int MaxLogLength = 128 * 1024;
     private static readonly TimeSpan ProgressLogInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan ProcessHeartbeatInterval = TimeSpan.FromSeconds(10);
-    private static readonly string[] ExeFileNames = ["cfst.exe", "CloudflareST.exe"];
+    private static readonly string[] ExeFileNames = ["cfst.exe", "CloudflareST.exe", "cfst", "CloudflareST"];
 
     public async Task<CloudflareSpeedTestRunResult> RunAsync(int resultLimit, CancellationToken cancellationToken = default)
     {

@@ -7,6 +7,8 @@ namespace v2rayN.Desktop.Views;
 /// </summary>
 public partial class ThemeSettingView : ReactiveUserControl<ThemeSettingViewModel>
 {
+    public event EventHandler? WorkspaceBackgroundRequested;
+
     public ThemeSettingView()
     {
         InitializeComponent();
@@ -15,6 +17,7 @@ public partial class ThemeSettingView : ReactiveUserControl<ThemeSettingViewMode
         cmbCurrentTheme.ItemsSource = Utils.GetEnumNames<ETheme>();
         cmbCurrentFontSize.ItemsSource = Enumerable.Range(Global.MinFontSize, Global.MinFontSizeCount).ToList();
         cmbCurrentLanguage.ItemsSource = Global.Languages;
+        btnWorkspaceBackground.Click += (_, _) => WorkspaceBackgroundRequested?.Invoke(this, EventArgs.Empty);
 
         this.WhenActivated(disposables =>
         {

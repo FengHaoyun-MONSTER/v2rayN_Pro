@@ -61,6 +61,9 @@ public partial class ProfilesView : ReactiveUserControl<ProfilesViewModel>
             this.BindCommand(ViewModel, vm => vm.CopyServerCmd, v => v.menuCopyServer).DisposeWith(disposables);
             this.BindCommand(ViewModel, vm => vm.SetDefaultServerCmd, v => v.menuSetDefaultServer).DisposeWith(disposables);
             this.BindCommand(ViewModel, vm => vm.ShareServerCmd, v => v.menuShareServer).DisposeWith(disposables);
+            this.BindCommand(ViewModel, vm => vm.GenerateCloudflareBestNodesCmd, v => v.menuGenerateCloudflareBestNodes).DisposeWith(disposables);
+            this.OneWayBind(ViewModel, vm => vm.CanShowCloudflareBestNodeMenu, v => v.menuGenerateCloudflareBestNodes.IsVisible).DisposeWith(disposables);
+            this.OneWayBind(ViewModel, vm => vm.CloudflareBestNodeMenuHeader, v => v.menuGenerateCloudflareBestNodes.Header).DisposeWith(disposables);
             this.BindCommand(ViewModel, vm => vm.GenGroupAllServerCmd, v => v.menuGenGroupAllServer).DisposeWith(disposables);
             this.BindCommand(ViewModel, vm => vm.GenGroupRegionServerCmd, v => v.menuGenGroupRegionServer).DisposeWith(disposables);
 
@@ -96,6 +99,12 @@ public partial class ProfilesView : ReactiveUserControl<ProfilesViewModel>
               .Subscribe(_ => StorageUI())
               .DisposeWith(disposables);
 
+            AppEvents.AddSubscriptionRequested
+                .AsObservable()
+                .ObserveOn(RxSchedulers.MainThreadScheduler)
+                .Subscribe(async _ => await ViewModel.AddSubscription())
+                .DisposeWith(disposables);
+
             //AppEvents.AdjustMainLvColWidthRequested
             //    .AsObservable()
             //    .ObserveOn(RxSchedulers.MainThreadScheduler)
@@ -104,6 +113,17 @@ public partial class ProfilesView : ReactiveUserControl<ProfilesViewModel>
         });
 
         RestoreUI();
+    }
+
+    public async Task AddSubscriptionAsync()
+    {
+        if (ViewModel is null)
+        {
+            Logging.SaveLog("Add subscription was requested before ProfilesViewModel was initialized.");
+            return;
+        }
+
+        await ViewModel.AddSubscription();
     }
 
     private async void LstProfiles_Sorting(object? sender, DataGridColumnEventArgs e)

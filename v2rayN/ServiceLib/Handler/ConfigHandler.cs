@@ -982,7 +982,10 @@ public static class ConfigHandler
                 EServerColName.Port => lstProfile.OrderBy(t => t.Port).ToList(),
                 EServerColName.Network => lstProfile.OrderBy(t => t.Network).ToList(),
                 EServerColName.StreamSecurity => lstProfile.OrderBy(t => t.StreamSecurity).ToList(),
-                EServerColName.DelayVal => lstProfile.OrderBy(t => t.Delay).ToList(),
+                EServerColName.DelayVal => lstProfile
+                    .OrderBy(t => t.Delay == -1 ? 1 : 0)
+                    .ThenBy(t => t.Delay)
+                    .ToList(),
                 EServerColName.SpeedVal => lstProfile.OrderBy(t => t.Speed).ToList(),
                 EServerColName.IpInfo => lstProfile.OrderBy(t => t.IpInfo).ToList(),
                 EServerColName.SubRemarks => lstProfile.OrderBy(t => t.Subid).ToList(),
@@ -1023,10 +1026,11 @@ public static class ConfigHandler
         {
             case EServerColName.DelayVal:
                 {
-                    var maxSort = lstProfile.Max(t => t.Sort) + 10;
-                    foreach (var item in lstProfile.Where(item => item.Delay <= 0))
+                    var maxSort = (lstProfile.Count + 1) * 10;
+                    foreach (var item in lstProfile.Where(item => item.Delay == -1))
                     {
                         ProfileExManager.Instance.SetSort(item.IndexId, maxSort);
+                        maxSort += 10;
                     }
 
                     break;

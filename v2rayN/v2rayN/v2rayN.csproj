@@ -20,6 +20,7 @@
 			<TreatAsUsed>true</TreatAsUsed>
 		</PackageReference>
 		<PackageReference Include="ReactiveUI.WPF" />
+		<PackageReference Include="XamlAnimatedGif" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -33,6 +34,11 @@
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
 			<TargetPath>bin\cfst\ip.txt</TargetPath>
+		</Content>
+		<Content Include="Resources\Backgrounds\default-workspace-background.gif">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+			<TargetPath>guiConfigs\default-workspace-background.gif</TargetPath>
 		</Content>
 		<EmbeddedResource Include="Resources\v2rayN.ico">
 			<CopyToOutputDirectory>Never</CopyToOutputDirectory>

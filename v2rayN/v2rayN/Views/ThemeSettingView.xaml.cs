@@ -7,6 +7,8 @@ namespace v2rayN.Views;
 /// </summary>
 public partial class ThemeSettingView
 {
+    public event EventHandler? WorkspaceBackgroundRequested;
+
     public ThemeSettingView()
     {
         InitializeComponent();
@@ -15,6 +17,7 @@ public partial class ThemeSettingView
         cmbCurrentTheme.ItemsSource = Utils.GetEnumNames<ETheme>().Take(3).ToList();
         cmbCurrentFontSize.ItemsSource = Enumerable.Range(Global.MinFontSize, Global.MinFontSizeCount).ToList();
         cmbCurrentLanguage.ItemsSource = Global.Languages;
+        btnWorkspaceBackground.Click += (_, _) => WorkspaceBackgroundRequested?.Invoke(this, EventArgs.Empty);
 
         this.WhenActivated(disposables =>
         {

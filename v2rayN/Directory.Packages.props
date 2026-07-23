@@ -30,6 +30,7 @@
     <PackageVersion Include="Repobot.SQLite.Unofficial" Version="3.53.3" />
     <PackageVersion Include="TaskScheduler" Version="2.12.2" />
     <PackageVersion Include="WebDav.Client" Version="2.9.0" />
+    <PackageVersion Include="XamlAnimatedGif" Version="2.3.2" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
     <PackageVersion Include="YamlDotNet" Version="18.0.0" />

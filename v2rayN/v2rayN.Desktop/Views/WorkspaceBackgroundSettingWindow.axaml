@@ -1,0 +1,40 @@
+<Window
+    x:Class="v2rayN.Desktop.Views.WorkspaceBackgroundSettingWindow"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:resx="clr-namespace:ServiceLib.Resx;assembly=ServiceLib"
+    Title="背景图片"
+    Width="720"
+    Height="250"
+    CanResize="False"
+    ShowInTaskbar="False"
+    WindowStartupLocation="CenterOwner">
+    <DockPanel Margin="20">
+        <StackPanel
+            Margin="4,20,4,0"
+            HorizontalAlignment="Center"
+            DockPanel.Dock="Bottom"
+            Orientation="Horizontal">
+            <Button x:Name="btnSave" Width="100" Classes="Accent" Content="{x:Static resx:ResUI.TbConfirm}" IsDefault="True" />
+            <Button x:Name="btnCancel" Width="100" Margin="8,0,0,0" Content="{x:Static resx:ResUI.TbCancel}" IsCancel="True" />
+        </StackPanel>
+        <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,20,Auto">
+            <TextBlock VerticalAlignment="Center" Text="背景图片" />
+            <Grid Grid.Column="1" ColumnDefinitions="*,Auto,Auto">
+                <TextBox x:Name="txtBackgroundPath" VerticalAlignment="Center" IsReadOnly="True" />
+                <Button x:Name="btnBrowse" Grid.Column="1" MinWidth="82" Margin="8,0,0,0" Content="选择图片" />
+                <Button x:Name="btnClear" Grid.Column="2" MinWidth="82" Margin="8,0,0,0" Content="移除背景" />
+            </Grid>
+            <TextBlock Grid.Row="2" VerticalAlignment="Center" Text="背景透明度" />
+            <Grid Grid.Row="2" Grid.Column="1" ColumnDefinitions="*,64">
+                <Slider
+                    x:Name="sldOpacity"
+                    Minimum="0"
+                    Maximum="100"
+                    TickFrequency="1"
+                    VerticalAlignment="Center" />
+                <TextBlock x:Name="txtOpacity" Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" FontWeight="SemiBold" />
+            </Grid>
+        </Grid>
+    </DockPanel>
+</Window>

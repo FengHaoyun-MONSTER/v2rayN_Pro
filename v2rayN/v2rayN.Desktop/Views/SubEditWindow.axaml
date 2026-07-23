@@ -2,268 +2,116 @@
     x:Class="v2rayN.Desktop.Views.SubEditWindow"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:resx="clr-namespace:ServiceLib.Resx;assembly=ServiceLib"
     xmlns:vms="clr-namespace:ServiceLib.ViewModels;assembly=ServiceLib"
     Title="{x:Static resx:ResUI.menuSubSetting}"
     Width="700"
-    Height="600"
+    Height="250"
+    MinHeight="250"
+    x:DataType="vms:SubEditViewModel"
     ShowInTaskbar="False"
-    WindowStartupLocation="CenterScreen"
-    mc:Ignorable="d">
-    <DockPanel Margin="{StaticResource Margin8}">
+    WindowStartupLocation="CenterOwner">
+    <DockPanel Margin="12">
         <StackPanel
-            Margin="{StaticResource Margin4}"
+            Margin="4,16,4,0"
             HorizontalAlignment="Center"
             DockPanel.Dock="Bottom"
             Orientation="Horizontal">
-            <Button
-                x:Name="btnSave"
-                Width="100"
-                Content="{x:Static resx:ResUI.TbConfirm}"
-                IsDefault="True" />
-            <Button
-                x:Name="btnCancel"
-                Width="100"
-                Margin="{StaticResource MarginLr8}"
-                Content="{x:Static resx:ResUI.TbCancel}"
-                IsCancel="True" />
+            <Button x:Name="btnSave" Width="100" Classes="Accent" Content="{x:Static resx:ResUI.TbConfirm}" IsDefault="True" />
+            <Button x:Name="btnCancel" Width="100" Margin="8,0,0,0" Content="{x:Static resx:ResUI.TbCancel}" IsCancel="True" />
         </StackPanel>
+
         <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+            <Grid ColumnDefinitions="110,*,Auto,Auto" RowDefinitions="Auto,Auto,Auto">
+                <TextBlock Grid.Row="0" Grid.Column="0" Margin="4" FontSize="16" FontWeight="SemiBold" Text="订阅分组" />
 
-            <Grid ColumnDefinitions="Auto,400,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
-
-                <TextBlock
-                    Grid.Row="0"
-                    Grid.Column="0"
-                    Margin="{StaticResource Margin4}"
-                    Text="{x:Static resx:ResUI.menuSubscription}" />
-
-                <TextBlock
-                    Grid.Row="1"
-                    Grid.Column="0"
-                    Margin="{StaticResource Margin4}"
-                    VerticalAlignment="Center"
-                    Text="{x:Static resx:ResUI.LvRemarks}" />
-
-                <TextBox
-                    x:Name="txtRemarks"
-                    Grid.Row="1"
-                    Grid.Column="1"
-                    Margin="{StaticResource Margin4}"
-                    VerticalAlignment="Center"
-                    TextWrapping="Wrap" />
-
-                <TextBlock
-                    Grid.Row="2"
-                    Grid.Column="0"
-                    Margin="{StaticResource Margin4}"
-                    VerticalAlignment="Center"
-                    Text="{x:Static resx:ResUI.LvUrl}" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Margin="4" VerticalAlignment="Center" Text="订阅链接" />
                 <TextBox
                     x:Name="txtUrl"
-                    Grid.Row="2"
+                    Grid.Row="1"
                     Grid.Column="1"
-                    Margin="{StaticResource Margin4}"
+                    Margin="4"
                     VerticalAlignment="Center"
+                    AcceptsReturn="True"
                     TextWrapping="Wrap"
-                    Watermark="{x:Static resx:ResUI.SubUrlTips}" />
-                <Button
-                    Grid.Row="2"
-                    Grid.Column="2"
-                    Classes="IconButton"
-                    HorizontalAlignment="Left"
-                    Margin="{StaticResource MarginLr8}">
+                    Watermark="粘贴订阅链接" />
+                <Button Grid.Row="1" Grid.Column="2" Margin="4" Classes="IconButton" ToolTip.Tip="更多订阅链接">
                     <Button.Content>
-                        <PathIcon Data="{StaticResource SemiIconMore}" >
-                            <PathIcon.RenderTransform>
-                                <RotateTransform Angle="90" />
-                            </PathIcon.RenderTransform>
-                        </PathIcon>
+                        <PathIcon Data="{StaticResource SemiIconMore}" />
                     </Button.Content>
                     <Button.Flyout>
                         <Flyout>
                             <StackPanel>
-                                <TextBlock
-                                    Margin="{StaticResource Margin4}"
-                                    VerticalAlignment="Center"
-                                    Text="{x:Static resx:ResUI.LvMoreUrl}" />
+                                <TextBlock Margin="4" Text="更多地址" />
                                 <TextBox
                                     x:Name="txtMoreUrl"
                                     Width="400"
                                     MinHeight="100"
-                                    Margin="{StaticResource Margin4}"
-                                    HorizontalAlignment="Stretch"
-                                    VerticalAlignment="Center"
+                                    Margin="4"
+                                    AcceptsReturn="True"
                                     Classes="TextArea"
-                                    MinLines="4"
                                     TextWrapping="Wrap"
-                                    Watermark="{x:Static resx:ResUI.SubUrlTips}" />
+                                    Watermark="每行粘贴一个订阅链接" />
                             </StackPanel>
                         </Flyout>
                     </Button.Flyout>
                 </Button>
+                <ToggleButton
+                    x:Name="togAdvanced"
+                    Grid.Row="1"
+                    Grid.Column="3"
+                    Width="38"
+                    Height="34"
+                    Margin="4"
+                    Checked="TogAdvanced_Checked"
+                    Content="∨"
+                    ToolTip.Tip="展开更多设置"
+                    Unchecked="TogAdvanced_Unchecked" />
 
-                <TextBlock
-                    Grid.Row="3"
+                <Grid
+                    x:Name="pnlAdvanced"
+                    Grid.Row="2"
                     Grid.Column="0"
-                    Margin="{StaticResource Margin4}"
-                    VerticalAlignment="Center"
-                    Text="{x:Static resx:ResUI.LvEnabled}" />
+                    Grid.ColumnSpan="4"
+                    IsVisible="False"
+                    ColumnDefinitions="110,*,Auto"
+                    RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0" Margin="4" VerticalAlignment="Center" Text="别名" />
+                    <TextBox x:Name="txtRemarks" Grid.Row="0" Grid.Column="1" Margin="4" TextWrapping="Wrap" />
 
-                <DockPanel
-                    Grid.Row="3"
-                    Grid.Column="1"
-                    Margin="{StaticResource Margin4}">
-                    <ToggleSwitch
-                        x:Name="togEnable"
-                        Margin="{StaticResource Margin4}"
-                        HorizontalAlignment="Center"
-                        DockPanel.Dock="Left" />
+                    <TextBlock Grid.Row="1" Margin="4" VerticalAlignment="Center" Text="启用更新" />
+                    <DockPanel Grid.Row="1" Grid.Column="1" Margin="4">
+                        <ToggleSwitch x:Name="togEnable" DockPanel.Dock="Left" />
+                        <TextBox x:Name="txtAutoUpdateInterval" Width="100" Margin="12,0,0,0" DockPanel.Dock="Right" />
+                        <TextBlock Margin="12,0" VerticalAlignment="Center" Text="自动更新间隔（分钟）" />
+                    </DockPanel>
 
-                    <TextBox
-                        x:Name="txtAutoUpdateInterval"
-                        Width="100"
-                        Margin="{StaticResource Margin4}"
-                        VerticalAlignment="Center"
-                        DockPanel.Dock="Right"
-                        Watermark="{x:Static resx:ResUI.SubUrlTips}" />
+                    <TextBlock Grid.Row="2" Margin="4" VerticalAlignment="Center" Text="别名正则过滤" />
+                    <TextBox x:Name="txtFilter" Grid.Row="2" Grid.Column="1" Margin="4" />
 
-                    <TextBlock
-                        Margin="{StaticResource Margin4}"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        Text="{x:Static resx:ResUI.LvAutoUpdateInterval}" />
-                </DockPanel>
+                    <TextBlock Grid.Row="3" Margin="4" VerticalAlignment="Center" Text="订阅转换目标类型" />
+                    <ComboBox x:Name="cmbConvertTarget" Grid.Row="3" Grid.Column="1" Margin="4" />
 
-                <TextBlock
-                    Grid.Row="5"
-                    Grid.Column="0"
-                    Margin="{StaticResource Margin4}"
-                    VerticalAlignment="Center"
-                    Text="{x:Static resx:ResUI.LvFilter}" />
-                <TextBox
-                    x:Name="txtFilter"
-                    Grid.Row="5"
-                    Grid.Column="1"
-                    Margin="{StaticResource Margin4}"
-                    VerticalAlignment="Center"
-                    Watermark="{x:Static resx:ResUI.SubUrlTips}" />
+                    <TextBlock Grid.Row="4" Margin="4" VerticalAlignment="Center" Text="User Agent（可选）" />
+                    <TextBox x:Name="txtUserAgent" Grid.Row="4" Grid.Column="1" Margin="4" TextWrapping="Wrap" />
 
-                <TextBlock
-                    Grid.Row="6"
-                    Grid.Column="0"
-                    Margin="{StaticResource Margin4}"
-                    VerticalAlignment="Center"
-                    Text="{x:Static resx:ResUI.LvConvertTarget}" />
-                <ComboBox
-                    x:Name="cmbConvertTarget"
-                    Grid.Row="6"
-                    Grid.Column="1"
-                    Width="200"
-                    Margin="{StaticResource Margin4}"
-                    ToolTip.Tip="{x:Static resx:ResUI.LvConvertTargetTip}" />
+                    <TextBlock Grid.Row="5" Margin="4" VerticalAlignment="Center" Text="排序" />
+                    <TextBox x:Name="txtSort" Grid.Row="5" Grid.Column="1" Width="100" Margin="4" HorizontalAlignment="Left" />
 
-                <TextBlock
-                    Grid.Row="7"
-                    Grid.Column="0"
-                    Margin="{StaticResource Margin4}"
-                    VerticalAlignment="Center"
-                    Text="{x:Static resx:ResUI.LvUserAgent}" />
-                <TextBox
-                    x:Name="txtUserAgent"
-                    Grid.Row="7"
-                    Grid.Column="1"
-                    Margin="{StaticResource Margin4}"
-                    VerticalAlignment="Center"
-                    TextWrapping="Wrap"
-                    Watermark="{x:Static resx:ResUI.SubUrlTips}" />
+                    <TextBlock Grid.Row="6" Margin="4" VerticalAlignment="Center" Text="前置代理配置别名" />
+                    <TextBox x:Name="txtPrevProfile" Grid.Row="6" Grid.Column="1" Margin="4" />
+                    <Button Grid.Row="6" Grid.Column="2" Margin="4" Click="BtnSelectPrevProfile_Click" Content="选择配置" />
 
-                <TextBlock
-                    Grid.Row="8"
-                    Grid.Column="0"
-                    Margin="{StaticResource Margin4}"
-                    VerticalAlignment="Center"
-                    Text="{x:Static resx:ResUI.LvSort}" />
-                <TextBox
-                    x:Name="txtSort"
-                    Grid.Row="8"
-                    Grid.Column="1"
-                    Width="100"
-                    Margin="{StaticResource Margin4}"
-                    HorizontalAlignment="Left" />
+                    <TextBlock Grid.Row="7" Margin="4" VerticalAlignment="Center" Text="落地代理配置别名" />
+                    <TextBox x:Name="txtNextProfile" Grid.Row="7" Grid.Column="1" Margin="4" />
+                    <Button Grid.Row="7" Grid.Column="2" Margin="4" Click="BtnSelectNextProfile_Click" Content="选择配置" />
 
-                <TextBlock
-                    Grid.Row="9"
-                    Grid.Column="0"
-                    Margin="{StaticResource Margin4}"
-                    VerticalAlignment="Center"
-                    Text="{x:Static resx:ResUI.LvPrevProfile}" />
-                <TextBox
-                    x:Name="txtPrevProfile"
-                    Grid.Row="9"
-                    Grid.Column="1"
-                    Margin="{StaticResource Margin4}"
-                    VerticalAlignment="Center"
-                    Watermark="{x:Static resx:ResUI.LvPrevProfileTip}" />
-                <Button
-                    Grid.Row="9"
-                    Grid.Column="2"
-                    Margin="{StaticResource Margin4}"
-                    Click="BtnSelectPrevProfile_Click"
-                    Content="{x:Static resx:ResUI.TbSelectProfile}" />
+                    <TextBlock Grid.Row="8" Margin="4" VerticalAlignment="Center" Text="自定义 Socks 端口" />
+                    <TextBox x:Name="txtPreSocksPort" Grid.Row="8" Grid.Column="1" Margin="4" />
 
-                <TextBlock
-                    Grid.Row="10"
-                    Grid.Column="0"
-                    Margin="{StaticResource Margin4}"
-                    VerticalAlignment="Center"
-                    Text="{x:Static resx:ResUI.LvNextProfile}" />
-                <TextBox
-                    x:Name="txtNextProfile"
-                    Grid.Row="10"
-                    Grid.Column="1"
-                    Margin="{StaticResource Margin4}"
-                    VerticalAlignment="Center"
-                    Watermark="{x:Static resx:ResUI.LvPrevProfileTip}" />
-                <Button
-                    Grid.Row="10"
-                    Grid.Column="2"
-                    Margin="{StaticResource Margin4}"
-                    Click="BtnSelectNextProfile_Click"
-                    Content="{x:Static resx:ResUI.TbSelectProfile}" />
-
-                <TextBlock
-                    Grid.Row="11"
-                    Grid.Column="0"
-                    Margin="{StaticResource Margin4}"
-                    VerticalAlignment="Center"
-                    Text="{x:Static resx:ResUI.TbPreSocksPort4Sub}" />
-                <TextBox
-                    x:Name="txtPreSocksPort"
-                    Grid.Row="11"
-                    Grid.Column="1"
-                    Width="200"
-                    Margin="{StaticResource Margin4}"
-                    HorizontalAlignment="Left"
-                    ToolTip.Tip="{x:Static resx:ResUI.TipPreSocksPort}"
-                    Watermark="{x:Static resx:ResUI.TipPreSocksPort}" />
-
-                <TextBlock
-                    Grid.Row="12"
-                    Grid.Column="0"
-                    Margin="{StaticResource Margin4}"
-                    VerticalAlignment="Center"
-                    Text="{x:Static resx:ResUI.LvMemo}" />
-                <TextBox
-                    x:Name="txtMemo"
-                    Grid.Row="12"
-                    Grid.Column="1"
-                    Margin="{StaticResource Margin4}"
-                    VerticalAlignment="Center"
-                    TextWrapping="Wrap" />
-
+                    <TextBlock Grid.Row="9" Margin="4" VerticalAlignment="Center" Text="备注" />
+                    <TextBox x:Name="txtMemo" Grid.Row="9" Grid.Column="1" Margin="4" TextWrapping="Wrap" />
+                </Grid>
             </Grid>
         </ScrollViewer>
     </DockPanel>

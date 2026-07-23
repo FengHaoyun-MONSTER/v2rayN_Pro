@@ -13,6 +13,7 @@
     d:DesignHeight="450"
     d:DesignWidth="800"
     x:TypeArguments="vms:ProfilesViewModel"
+    Background="Transparent"
     Style="{StaticResource ViewGlobal}"
     mc:Ignorable="d">
     <UserControl.Resources>
@@ -22,16 +23,6 @@
     <Grid>
         <DockPanel>
             <WrapPanel Margin="{StaticResource Margin4}" DockPanel.Dock="Top">
-                <Button
-                    x:Name="btnShowSubscriptionDashboard"
-                    Height="30"
-                    MinWidth="76"
-                    Margin="{StaticResource MarginLeftRight4}"
-                    Content="展开首页"
-                    Padding="10,0"
-                    Style="{StaticResource DefButton}"
-                    ToolTip="展开首页"
-                    Visibility="Collapsed" />
                 <ListBox
                     x:Name="lstGroup"
                     MaxHeight="200"
@@ -41,7 +32,35 @@
                     Style="{StaticResource MaterialDesignChoiceChipPrimaryOutlineListBox}">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <TextBlock Text="{Binding Remarks}" />
+                            <StackPanel>
+                                <TextBlock Text="{Binding Remarks}" />
+                                <TextBlock
+                                    MaxWidth="360"
+                                    Margin="0,2,0,0"
+                                    FontSize="10"
+                                    Opacity="0.68"
+                                    Text="{Binding DataContext.SelectedSubscriptionTraffic, RelativeSource={RelativeSource AncestorType={x:Type UserControl}}}"
+                                    TextTrimming="CharacterEllipsis">
+                                    <TextBlock.Style>
+                                        <Style TargetType="{x:Type TextBlock}">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <MultiDataTrigger>
+                                                    <MultiDataTrigger.Conditions>
+                                                        <Condition
+                                                            Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType={x:Type ListBoxItem}}}"
+                                                            Value="True" />
+                                                        <Condition
+                                                            Binding="{Binding DataContext.HasSelectedSubscriptionTraffic, RelativeSource={RelativeSource AncestorType={x:Type UserControl}}}"
+                                                            Value="True" />
+                                                    </MultiDataTrigger.Conditions>
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </MultiDataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
@@ -56,17 +75,6 @@
                     Padding="10,0"
                     Style="{StaticResource DefButton}"
                     ToolTip="修改订阅" />
-                <Button
-                    x:Name="btnAddSub"
-                    Height="30"
-                    MinWidth="76"
-                    Margin="{StaticResource MarginLeftRight4}"
-                    AutomationProperties.Name="{x:Static resx:ResUI.menuSubAdd}"
-                    Content="添加订阅"
-                    Padding="10,0"
-                    Style="{StaticResource DefButton}"
-                    ToolTip="添加订阅" />
-
                 <TextBox
                     x:Name="txtServerFilter"
                     Width="200"
@@ -110,6 +118,7 @@
             </WrapPanel>
             <DataGrid
                 x:Name="lstProfiles"
+                Background="Transparent"
                 materialDesign:DataGridAssist.CellPadding="2,2"
                 AutoGenerateColumns="False"
                 BorderThickness="1"
