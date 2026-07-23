@@ -67,6 +67,9 @@ artifacts/
 /cfst_windows_amd64/
 /cfst_windows_amd64.zip
 
+# Local upstream reference clone. The canonical upstream is the Git remote.
+/docs/v2rayN/
+
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
 

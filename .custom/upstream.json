@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "upstreamRepository": "https://github.com/2dust/v2rayN.git",
+  "upstreamRemote": "upstream",
+  "upstreamRef": "7.23.2",
+  "upstreamCommit": "a236fab27c2ecaec18321bc459175c4450f9c87e",
+  "customBranch": "custom/main"
+}
