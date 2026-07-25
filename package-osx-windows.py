@@ -72,6 +72,7 @@ def validate_app(
     app: Path,
     expected_arch: str,
     require_bundle_signature: bool = True,
+    verify_xray_source: bool = True,
 ) -> list[Path]:
     if not app.is_dir() or app.suffix != ".app":
         raise ValueError(f"Not a macOS app bundle: {app}")
@@ -115,7 +116,7 @@ def validate_app(
         if not required_file.is_file():
             raise ValueError(f"Missing required runtime file: {required_file}")
 
-    if expected_arch == "arm64":
+    if expected_arch == "arm64" and verify_xray_source:
         # Xray v26.7.11 added Darwin process lookup required by Xray TUN routing.
         xray_path = app / "Contents" / "MacOS" / "bin" / "xray" / "xray"
         xray_sha256 = hashlib.sha256(xray_path.read_bytes()).hexdigest()
@@ -245,9 +246,17 @@ def main() -> int:
     output = args.output.resolve()
     try:
         with tempfile.TemporaryDirectory(prefix="v2rayn-macos-sign-") as temporary:
+            verify_xray_source = True
             if args.rcodesign:
                 app = sign_bundle(app, args.rcodesign, args.arch, Path(temporary))
-            machos = validate_app(app, args.arch)
+                # Signing changes the Mach-O hash. sign_bundle validates the
+                # pristine Xray source before rcodesign writes its signature.
+                verify_xray_source = False
+            machos = validate_app(
+                app,
+                args.arch,
+                verify_xray_source=verify_xray_source,
+            )
             create_zip(app, output, machos)
     except (OSError, ValueError, plistlib.InvalidFileException) as error:
         print(f"error: {error}", file=sys.stderr)
