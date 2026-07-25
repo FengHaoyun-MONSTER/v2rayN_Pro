@@ -53,13 +53,12 @@ fi
 
 CFST_FILE="cfst_darwin_${CFST_ARCH}.zip"
 CFST_URL="https://github.com/XIU2/CloudflareSpeedTest/releases/download/${CFST_VERSION}/${CFST_FILE}"
-CFST_TEMP="cfst-package-${CFST_ARCH}"
-rm -rf "$CFST_TEMP"
-mkdir -p "$CFST_TEMP" "$OutputPath/bin/cfst"
+mkdir -p "$OutputPath/bin/cfst"
 curl --fail --location --retry 3 --output "$CFST_FILE" "$CFST_URL"
-unzip -q -o "$CFST_FILE" -d "$CFST_TEMP"
-cp -f "$CFST_TEMP/cfst" "$OutputPath/bin/cfst/cfst"
-cp -f "$CFST_TEMP/ip.txt" "$OutputPath/bin/cfst/ip.txt"
+# Extract only runtime files. The upstream archive also contains filenames
+# whose legacy encoding is not handled consistently by macOS unzip.
+unzip -p "$CFST_FILE" cfst > "$OutputPath/bin/cfst/cfst"
+unzip -p "$CFST_FILE" ip.txt > "$OutputPath/bin/cfst/ip.txt"
 chmod 755 "$OutputPath/bin/cfst/cfst"
 
 PackagePath="v2rayN-Package-${Arch}"
