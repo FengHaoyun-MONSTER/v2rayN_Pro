@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import plistlib
 import shutil
@@ -20,6 +21,10 @@ CPU_NAMES = {
     0x01000007: "x64",
     0x0100000C: "arm64",
 }
+
+MACOS_ARM64_XRAY_SHA256 = (
+    "672590b1c35b1d8cd7ba3e786ab53189001f32e46369e18c0d81d099a4d66c52"
+)
 
 README = """v2rayN macOS installation
 
@@ -109,6 +114,17 @@ def validate_app(
     for required_file in required_runtime_files:
         if not required_file.is_file():
             raise ValueError(f"Missing required runtime file: {required_file}")
+
+    if expected_arch == "arm64":
+        # Xray v26.7.11 added Darwin process lookup required by Xray TUN routing.
+        xray_path = app / "Contents" / "MacOS" / "bin" / "xray" / "xray"
+        xray_sha256 = hashlib.sha256(xray_path.read_bytes()).hexdigest()
+        if xray_sha256 != MACOS_ARM64_XRAY_SHA256:
+            raise ValueError(
+                "Unsupported macOS ARM64 Xray binary. "
+                f"Expected v26.7.11 SHA256 {MACOS_ARM64_XRAY_SHA256}, "
+                f"got {xray_sha256}. Replace bin/xray/xray before packaging."
+            )
 
     code_resources = app / "Contents" / "_CodeSignature" / "CodeResources"
     if require_bundle_signature and not code_resources.is_file():

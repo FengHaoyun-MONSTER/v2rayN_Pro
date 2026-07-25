@@ -10,6 +10,59 @@ namespace ServiceLib.Tests.CoreConfig.V2ray;
 public class CoreConfigV2rayServiceTests
 {
     [Fact]
+    public void GenerateClientConfigContent_MacOsTun_ShouldUseRouteOnlyAndProtectOnlyRequiredProcesses()
+    {
+        var config = CoreConfigTestFactory.CreateConfig(ECoreType.Xray);
+        config.TunModeItem.EnableTun = true;
+        CoreConfigTestFactory.BindAppManagerConfig(config);
+        var node = CoreConfigTestFactory.CreateVmessNode(ECoreType.Xray);
+        var context = CoreConfigTestFactory.CreateContext(config, node, ECoreType.Xray) with
+        {
+            IsTunEnabled = true,
+            IsMacOS = true,
+        };
+
+        var result = new CoreConfigV2rayService(context).GenerateClientConfigContent();
+
+        result.Success.Should().BeTrue();
+        var cfg = JsonUtils.Deserialize<V2rayConfig>(result.Data!.ToString())!;
+        var tunInbound = cfg.inbounds.Single(i => i.tag == "tun");
+        tunInbound.sniffing.routeOnly.Should().BeTrue();
+
+        var protectedProcesses = cfg.routing.rules
+            .Where(rule => rule.process is { Count: > 0 })
+            .SelectMany(rule => rule.process!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        protectedProcesses.Should().BeEquivalentTo(["self/"]);
+    }
+
+    [Fact]
+    public void GenerateClientConfigContent_MacOsTunWithOutboundCore_ShouldProtectXray()
+    {
+        var config = CoreConfigTestFactory.CreateConfig(ECoreType.Xray);
+        config.TunModeItem.EnableTun = true;
+        CoreConfigTestFactory.BindAppManagerConfig(config);
+        var node = CoreConfigTestFactory.CreateVmessNode(ECoreType.Xray);
+        var context = CoreConfigTestFactory.CreateContext(config, node, ECoreType.Xray) with
+        {
+            IsTunEnabled = true,
+            IsMacOS = true,
+            ProtectCoreTypeList = [ECoreType.Xray],
+        };
+
+        var result = new CoreConfigV2rayService(context).GenerateClientConfigContent();
+
+        result.Success.Should().BeTrue();
+        var cfg = JsonUtils.Deserialize<V2rayConfig>(result.Data!.ToString())!;
+        var protectedProcesses = cfg.routing.rules
+            .Where(rule => rule.process is { Count: > 0 })
+            .SelectMany(rule => rule.process!)
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+        protectedProcesses.Should().BeEquivalentTo(["self/", "xray/"]);
+    }
+
+    [Fact]
     public void GenerateClientConfigContent_ShouldGenerateBasicProxyConfig()
     {
         var config = CoreConfigTestFactory.CreateConfig(ECoreType.Xray);
