@@ -10,10 +10,11 @@ set -euo pipefail
 
 FileName="v2rayN-${Arch}.zip"
 CoreDirectory="v2rayN-${Arch}"
-rm -rf "$CoreDirectory" "$FileName"
+CoreExtractRoot="core-package-${Arch}"
+rm -rf "$CoreExtractRoot" "$FileName"
 wget -nv -O "$FileName" "https://github.com/2dust/v2rayN-core-bin/raw/refs/heads/master/$FileName"
-7z x -y "$FileName"
-cp -rf "$CoreDirectory/." "$OutputPath/"
+7z x -y -o"$CoreExtractRoot" "$FileName"
+cp -rf "$CoreExtractRoot/$CoreDirectory/." "$OutputPath/"
 
 case "$Arch" in
   macos-arm64)
