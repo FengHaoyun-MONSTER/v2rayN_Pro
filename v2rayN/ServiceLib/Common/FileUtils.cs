@@ -245,6 +245,9 @@ public static class FileUtils
         }
 
         File.Delete(shFilePath);
+        // Embedded shell resources may be compiled on Windows. Normalize them
+        // at runtime so macOS/Linux never receive a CRLF shebang or bash source.
+        contents = contents.Replace("\r\n", "\n").Replace('\r', '\n');
         await File.WriteAllTextAsync(shFilePath, contents);
         await Utils.SetLinuxChmod(shFilePath);
 

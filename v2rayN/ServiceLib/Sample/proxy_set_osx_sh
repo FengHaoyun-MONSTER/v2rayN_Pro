@@ -1,5 +1,16 @@
 #!/bin/bash
 
+NETWORKSETUP="/usr/sbin/networksetup"
+
+get_services() {
+    "$NETWORKSETUP" -listallnetworkservices | tail -n +2 | grep -v '^\*'
+}
+
+run_networksetup() {
+    echo "+ $NETWORKSETUP $*"
+    "$NETWORKSETUP" "$@"
+}
+
 # Function to set proxy
 set_proxy() {
     PROXY_IP=$1
@@ -13,47 +24,68 @@ set_proxy() {
     fi
 
     # Get all network service names
-    SERVICES=$(networksetup -listallnetworkservices | grep -v '*')
+    SERVICES=$(get_services)
+    if [ -z "$SERVICES" ]; then
+        echo "No enabled macOS network services were found." >&2
+        return 1
+    fi
 
     # Loop through each network service
-    echo "$SERVICES" | while read -r SERVICE; do
+    FAILED=0
+    while IFS= read -r SERVICE; do
+        [ -z "$SERVICE" ] && continue
         echo "Setting proxy for network service '$SERVICE'..."
         # Set HTTP proxy
-        networksetup -setwebproxy "$SERVICE" "$PROXY_IP" "$PROXY_PORT"
+        run_networksetup -setwebproxy "$SERVICE" "$PROXY_IP" "$PROXY_PORT" || FAILED=1
 
         # Set HTTPS proxy
-        networksetup -setsecurewebproxy "$SERVICE" "$PROXY_IP" "$PROXY_PORT"
+        run_networksetup -setsecurewebproxy "$SERVICE" "$PROXY_IP" "$PROXY_PORT" || FAILED=1
 
         # Set SOCKS proxy
-        networksetup -setsocksfirewallproxy "$SERVICE" "$PROXY_IP" "$PROXY_PORT"
+        run_networksetup -setsocksfirewallproxy "$SERVICE" "$PROXY_IP" "$PROXY_PORT" || FAILED=1
 
         # Set bypass domains
-        networksetup -setproxybypassdomains "$SERVICE" "${BYPASS_DOMAINS[@]}"
+        run_networksetup -setproxybypassdomains "$SERVICE" "${BYPASS_DOMAINS[@]}" || FAILED=1
+
+        echo "HTTP proxy state for '$SERVICE':"
+        run_networksetup -getwebproxy "$SERVICE" || FAILED=1
+        echo "HTTPS proxy state for '$SERVICE':"
+        run_networksetup -getsecurewebproxy "$SERVICE" || FAILED=1
+        echo "SOCKS proxy state for '$SERVICE':"
+        run_networksetup -getsocksfirewallproxy "$SERVICE" || FAILED=1
         echo "Proxy for network service '$SERVICE' has been set to $PROXY_IP:$PROXY_PORT"
-    done
+    done <<< "$SERVICES"
     echo "Proxy settings for all network services are complete!"
+    return "$FAILED"
 }
 
 # Function to disable proxy
 clear_proxy() {
     # Get all network service names
-    SERVICES=$(networksetup -listallnetworkservices | grep -v '*')
+    SERVICES=$(get_services)
+    if [ -z "$SERVICES" ]; then
+        echo "No enabled macOS network services were found." >&2
+        return 1
+    fi
 
     # Loop through each network service
-    echo "$SERVICES" | while read -r SERVICE; do
+    FAILED=0
+    while IFS= read -r SERVICE; do
+        [ -z "$SERVICE" ] && continue
         echo "Disabling proxy and clearing bypass domains for network service '$SERVICE'..."
         # Disable HTTP proxy
-        networksetup -setwebproxystate "$SERVICE" off
+        run_networksetup -setwebproxystate "$SERVICE" off || FAILED=1
 
         # Disable HTTPS proxy
-        networksetup -setsecurewebproxystate "$SERVICE" off
+        run_networksetup -setsecurewebproxystate "$SERVICE" off || FAILED=1
 
         # Disable SOCKS proxy
-        networksetup -setsocksfirewallproxystate "$SERVICE" off
+        run_networksetup -setsocksfirewallproxystate "$SERVICE" off || FAILED=1
 
         echo "Proxy for network service '$SERVICE' has been disabled"
-    done
+    done <<< "$SERVICES"
     echo "Proxy for all network services has been disabled!"
+    return "$FAILED"
 }
 
 # Main script logic
@@ -64,8 +96,10 @@ if [ "$1" == "set" ]; then
         exit 1
     fi
     set_proxy "$2" "$3" "${@:4}"
+    exit $?
 elif [ "$1" == "clear" ]; then
     clear_proxy
+    exit $?
 else
     echo "Usage:"
     echo "  To set proxy:    $0 set <IP Address> <Port> [Bypass Domain 1 Bypass Domain 2 ...]"

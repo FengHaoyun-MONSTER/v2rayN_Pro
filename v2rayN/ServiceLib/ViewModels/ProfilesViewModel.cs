@@ -1052,9 +1052,8 @@ public class ProfilesViewModel : MyReactiveObject
         }
 
         _config.IndexId = indexId;
-        _config.SystemProxyItem.SysProxyType = ESysProxyType.ForcedChange;
         await ConfigHandler.SaveConfig(_config);
-        Logging.SaveLog($"Automatic speed test selected active server {indexId} and enabled automatic system proxy.");
+        Logging.SaveLog($"Automatic speed test selected active server {indexId} and requested automatic system proxy.");
 
         await RefreshServers();
         Reload();

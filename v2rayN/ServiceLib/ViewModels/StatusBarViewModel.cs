@@ -233,7 +233,14 @@ public class StatusBarViewModel : MyReactiveObject
         await ConfigHandler.InitBuiltinRouting(_config);
         await RefreshRoutingsMenu();
         await InboundDisplayStatus();
-        await ChangeSystemProxyAsync(_config.SystemProxyItem.SysProxyType, true);
+        if (Utils.IsMacOS() && _config.SystemProxyItem.SysProxyType == ESysProxyType.ForcedClear)
+        {
+            ApplySystemProxyState(ESysProxyType.ForcedClear, true);
+        }
+        else
+        {
+            await SetListenerType(_config.SystemProxyItem.SysProxyType);
+        }
 
         BlRouting = true;
     }
@@ -383,33 +390,78 @@ public class StatusBarViewModel : MyReactiveObject
 
     private async Task SetListenerType(ESysProxyType type)
     {
+        var previousType = _config.SystemProxyItem.SysProxyType;
+        if (!await EnsureMacOSSystemProxyAuthorization(type))
+        {
+            SystemProxySelected = (int)previousType;
+            return;
+        }
+
         if (_config.SystemProxyItem.SysProxyType == type)
         {
             SystemProxySelected = (int)type;
-            await ChangeSystemProxyAsync(type, true);
+            if (!await ChangeSystemProxyAsync(type, true))
+            {
+                NoticeManager.Instance.Enqueue("macOS system proxy update failed. Check guiLogs.");
+            }
             return;
         }
         _config.SystemProxyItem.SysProxyType = type;
-        await ChangeSystemProxyAsync(type, true);
+        if (!await ChangeSystemProxyAsync(type, true))
+        {
+            _config.SystemProxyItem.SysProxyType = previousType;
+            SystemProxySelected = (int)previousType;
+            ApplySystemProxyState(previousType, true);
+            NoticeManager.Instance.Enqueue("macOS system proxy update failed. Check guiLogs.");
+            return;
+        }
         NoticeManager.Instance.SendMessageEx($"{ResUI.TipChangeSystemProxy} - {_config.SystemProxyItem.SysProxyType}");
 
         SystemProxySelected = (int)_config.SystemProxyItem.SysProxyType;
         await ConfigHandler.SaveConfig(_config);
     }
 
-    public async Task ChangeSystemProxyAsync(ESysProxyType type, bool blChange)
+    public async Task<bool> ChangeSystemProxyAsync(ESysProxyType type, bool blChange)
     {
-        await SysProxyHandler.UpdateSysProxy(_config, false);
+        if (!await SysProxyHandler.UpdateSysProxy(_config, false))
+        {
+            Logging.SaveLog($"System proxy update failed. RequestedType={type}.");
+            return false;
+        }
 
+        ApplySystemProxyState(type, blChange);
+        return true;
+    }
+
+    private void ApplySystemProxyState(ESysProxyType type, bool refreshIcon)
+    {
         BlSystemProxyClear = type == ESysProxyType.ForcedClear;
         BlSystemProxySet = type == ESysProxyType.ForcedChange;
         BlSystemProxyNothing = type == ESysProxyType.Unchanged;
         BlSystemProxyPac = type == ESysProxyType.Pac;
 
-        if (blChange)
+        if (refreshIcon)
         {
             _updateView?.Invoke(EViewAction.DispatcherRefreshIcon, null);
         }
+    }
+
+    private async Task<bool> EnsureMacOSSystemProxyAuthorization(ESysProxyType type)
+    {
+        if (!Utils.IsMacOS()
+            || type is not (ESysProxyType.ForcedChange or ESysProxyType.ForcedClear)
+            || AppManager.Instance.LinuxSudoPwd.IsNotEmpty())
+        {
+            return true;
+        }
+
+        if (_updateView is null)
+        {
+            Logging.SaveLog("macOS system proxy authorization failed because the password view is unavailable.");
+            return false;
+        }
+
+        return await _updateView.Invoke(EViewAction.PasswordInput, null);
     }
 
     private async Task RefreshRoutingsMenu()
