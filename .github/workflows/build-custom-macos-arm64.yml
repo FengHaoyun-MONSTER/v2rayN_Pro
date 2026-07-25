@@ -64,6 +64,8 @@ jobs:
         test -s "$APP/guiConfigs/default-workspace-background.gif"
         file "$APP/v2rayN" | grep -q 'arm64'
         file "$APP/bin/cfst/cfst" | grep -q 'arm64'
+        file "$APP/bin/xray/xray" | grep -q 'arm64'
+        "$APP/bin/xray/xray" version | head -n 1 | grep -q '26.7.11'
         codesign --verify --deep --strict --verbose=2 "$MOUNT_POINT/v2rayN.app"
 
         while IFS= read -r -d '' FILE_PATH; do

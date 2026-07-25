@@ -4,22 +4,28 @@ Arch="$1"
 OutputPath="$2"
 Version="$3"
 CFST_VERSION="${CFST_VERSION:-v2.3.5}"
+XRAY_VERSION="${XRAY_VERSION:-v26.7.11}"
 
 set -euo pipefail
 
 FileName="v2rayN-${Arch}.zip"
 CoreDirectory="v2rayN-${Arch}"
-rm -rf "$CoreDirectory" "$FileName"
+CoreExtractRoot="core-package-${Arch}"
+rm -rf "$CoreExtractRoot" "$FileName"
 wget -nv -O "$FileName" "https://github.com/2dust/v2rayN-core-bin/raw/refs/heads/master/$FileName"
-7z x -y "$FileName"
-cp -rf "$CoreDirectory/." "$OutputPath/"
+7z x -y -o"$CoreExtractRoot" "$FileName"
+cp -rf "$CoreExtractRoot/$CoreDirectory/." "$OutputPath/"
 
 case "$Arch" in
   macos-arm64)
     CFST_ARCH="arm64"
+    XRAY_FILE="Xray-macos-arm64-v8a.zip"
+    XRAY_ARCHIVE_SHA256="61f8f74d099098af710fa43613d9934d97b901dee909801d34f496cd463956d1"
     ;;
   macos-64)
     CFST_ARCH="amd64"
+    XRAY_FILE="Xray-macos-64.zip"
+    XRAY_ARCHIVE_SHA256="d8c116756d3a88a38a833a94bdf8bc801f69243ee888befcb56df8b4f1ec4878"
     ;;
   *)
     echo "Unsupported macOS architecture for CloudflareST: $Arch" >&2
@@ -27,15 +33,32 @@ case "$Arch" in
     ;;
 esac
 
+# Xray v26.7.11 added Darwin process lookup. Older cores cannot safely run
+# the process-based routing rules used by v2rayN's Xray TUN configuration.
+XRAY_URL="https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/${XRAY_FILE}"
+XRAY_TEMP="xray-package-${CFST_ARCH}"
+rm -rf "$XRAY_TEMP" "$XRAY_FILE"
+mkdir -p "$XRAY_TEMP" "$OutputPath/bin/xray"
+curl --fail --location --retry 3 --output "$XRAY_FILE" "$XRAY_URL"
+echo "${XRAY_ARCHIVE_SHA256}  ${XRAY_FILE}" | shasum -a 256 --check
+unzip -q -o "$XRAY_FILE" -d "$XRAY_TEMP"
+cp -f "$XRAY_TEMP/xray" "$OutputPath/bin/xray/xray"
+chmod 755 "$OutputPath/bin/xray/xray"
+XRAY_VERSION_OUTPUT="$("$OutputPath/bin/xray/xray" version | head -n 1)"
+echo "Bundled ${XRAY_VERSION_OUTPUT}"
+if [[ "$XRAY_VERSION_OUTPUT" != *"${XRAY_VERSION#v}"* ]]; then
+  echo "Unexpected Xray version: $XRAY_VERSION_OUTPUT" >&2
+  exit 1
+fi
+
 CFST_FILE="cfst_darwin_${CFST_ARCH}.zip"
 CFST_URL="https://github.com/XIU2/CloudflareSpeedTest/releases/download/${CFST_VERSION}/${CFST_FILE}"
-CFST_TEMP="cfst-package-${CFST_ARCH}"
-rm -rf "$CFST_TEMP"
-mkdir -p "$CFST_TEMP" "$OutputPath/bin/cfst"
+mkdir -p "$OutputPath/bin/cfst"
 curl --fail --location --retry 3 --output "$CFST_FILE" "$CFST_URL"
-unzip -q -o "$CFST_FILE" -d "$CFST_TEMP"
-cp -f "$CFST_TEMP/cfst" "$OutputPath/bin/cfst/cfst"
-cp -f "$CFST_TEMP/ip.txt" "$OutputPath/bin/cfst/ip.txt"
+# Extract only runtime files. The upstream archive also contains filenames
+# whose legacy encoding is not handled consistently by macOS unzip.
+unzip -p "$CFST_FILE" cfst > "$OutputPath/bin/cfst/cfst"
+unzip -p "$CFST_FILE" ip.txt > "$OutputPath/bin/cfst/ip.txt"
 chmod 755 "$OutputPath/bin/cfst/cfst"
 
 PackagePath="v2rayN-Package-${Arch}"
