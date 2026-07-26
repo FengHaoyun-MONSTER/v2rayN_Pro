@@ -1,6 +1,13 @@
 name: build custom Windows x64
 
 on:
+  pull_request:
+    branches:
+      - custom/main
+    paths:
+      - 'v2rayN/**'
+      - '.github/workflows/build-custom-windows-x64.yml'
+      - '.github/workflows/release-custom.yml'
   workflow_call:
     inputs:
       version:
@@ -37,12 +44,25 @@ jobs:
       with:
         dotnet-version: 10.0.1xx
 
+    - name: Resolve version
+      shell: pwsh
+      run: |
+        $version = "${{ inputs.version }}"
+        if ([string]::IsNullOrWhiteSpace($version)) {
+          [xml]$props = Get-Content -LiteralPath ".\v2rayN\Directory.Build.props"
+          $version = $props.Project.PropertyGroup.Version | Select-Object -First 1
+        }
+        if ([string]::IsNullOrWhiteSpace($version)) {
+          throw "Unable to resolve application version"
+        }
+        "APP_VERSION=$version" >> $env:GITHUB_ENV
+
     - name: Publish v2rayN
       shell: pwsh
       run: |
         dotnet publish ".\v2rayN\v2rayN\v2rayN.csproj" `
           -c Release -r $env:RID -p:SelfContained=true `
-          -p:EnableWindowsTargeting=true -p:Version="${{ inputs.version }}" `
+          -p:EnableWindowsTargeting=true -p:Version="$env:APP_VERSION" `
           -o $env:OUTPUT
 
     - name: Publish AmazTool
@@ -50,7 +70,7 @@ jobs:
       run: |
         dotnet publish ".\v2rayN\AmazTool\AmazTool.csproj" `
           -c Release -r $env:RID -p:SelfContained=true -p:PublishTrimmed=true `
-          -p:EnableWindowsTargeting=true -p:Version="${{ inputs.version }}" `
+          -p:EnableWindowsTargeting=true -p:Version="$env:APP_VERSION" `
           -o $env:OUTPUT
 
     - name: Add official runtime assets

@@ -1,6 +1,14 @@
 name: build custom macOS arm64
 
 on:
+  pull_request:
+    branches:
+      - custom/main
+    paths:
+      - 'v2rayN/**'
+      - 'package-osx.sh'
+      - '.github/workflows/build-custom-macos-arm64.yml'
+      - '.github/workflows/release-custom.yml'
   workflow_call:
     inputs:
       version:
@@ -36,19 +44,28 @@ jobs:
       with:
         dotnet-version: 10.0.1xx
 
+    - name: Resolve version
+      run: |
+        version="${{ inputs.version }}"
+        if [[ -z "$version" ]]; then
+          version="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' v2rayN/Directory.Build.props | head -n 1)"
+        fi
+        [[ -n "$version" ]] || { echo "Unable to resolve application version" >&2; exit 1; }
+        echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+
     - name: Publish v2rayN
       working-directory: ./v2rayN
       run: >-
         dotnet publish ./v2rayN.Desktop/v2rayN.Desktop.csproj
         -c Release -r "$RID" -p:SelfContained=true
-        -p:Version="${{ inputs.version }}" -o "$OUTPUT"
+        -p:Version="$APP_VERSION" -o "$OUTPUT"
 
     - name: Publish AmazTool
       working-directory: ./v2rayN
       run: >-
         dotnet publish ./AmazTool/AmazTool.csproj
         -c Release -r "$RID" -p:SelfContained=true -p:PublishTrimmed=true
-        -p:Version="${{ inputs.version }}" -o "$OUTPUT"
+        -p:Version="$APP_VERSION" -o "$OUTPUT"
 
     - name: Remove debug symbols
       run: find "$OUTPUT" -type f -name '*.pdb' -delete
@@ -60,7 +77,7 @@ jobs:
       run: |
         set -euo pipefail
         chmod 755 package-osx.sh
-        ./package-osx.sh macos-arm64 "$OUTPUT" "${{ inputs.version }}"
+        ./package-osx.sh macos-arm64 "$OUTPUT" "$APP_VERSION"
         7z a -tZip v2rayN-macos-arm64.zip v2rayN-macos-arm64 -mx1
 
     - name: Verify DMG, ZIP, and ARM64 runtime
