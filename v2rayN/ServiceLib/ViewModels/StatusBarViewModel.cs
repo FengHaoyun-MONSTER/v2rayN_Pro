@@ -97,7 +97,7 @@ public class StatusBarViewModel : MyReactiveObject
         _config = AppManager.Instance.Config;
         SelectedRouting = new();
         SelectedServer = new();
-        RunningServerToolTipText = "-";
+        RunningServerToolTipText = GetRunningServerToolTipText("-");
         BlSystemProxyPacVisible = Utils.IsWindows();
         BlIsNonWindows = Utils.IsNonWindows();
 
@@ -300,14 +300,19 @@ public class StatusBarViewModel : MyReactiveObject
         var running = await ConfigHandler.GetDefaultServer(_config);
         if (running != null)
         {
-            RunningServerDisplay =
-                RunningServerToolTipText = running.GetSummary();
+            RunningServerDisplay = running.GetSummary();
+            RunningServerToolTipText = GetRunningServerToolTipText(RunningServerDisplay);
         }
         else
         {
-            RunningServerDisplay =
-                RunningServerToolTipText = ResUI.CheckServerSettings;
+            RunningServerDisplay = ResUI.CheckServerSettings;
+            RunningServerToolTipText = GetRunningServerToolTipText(RunningServerDisplay);
         }
+    }
+
+    private string GetRunningServerToolTipText(string serverInfo)
+    {
+        return Utils.IsLinux() ? Global.AppName : serverInfo;
     }
 
     private async Task RefreshServersMenu()

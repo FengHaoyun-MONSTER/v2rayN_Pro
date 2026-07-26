@@ -82,7 +82,13 @@ public class DownloadService
             AllowAutoRedirect = false,
             Proxy = await GetWebProxy(blProxy)
         };
-        var client = new HttpClient(webRequestHandler);
+        var certificateChainPolicy = CertPemManager.Instance.BuildCertificateChainPolicy();
+        if (certificateChainPolicy != null)
+        {
+            webRequestHandler.SslOptions.CertificateChainPolicy = certificateChainPolicy;
+            webRequestHandler.SslOptions.RemoteCertificateValidationCallback = null;
+        }
+        using var client = new HttpClient(webRequestHandler);
 
         var response = await client.GetAsync(url);
         if (response.StatusCode == HttpStatusCode.Redirect && response.Headers.Location is not null)
@@ -128,9 +134,10 @@ public class DownloadService
     /// </summary>
     public async Task<DownloadStringResult?> TryDownloadStringWithHeaders(string url, IWebProxy? webProxy, string userAgent, IReadOnlyDictionary<string, string>? headers = null)
     {
+        var timeout = 15;
         try
         {
-            var result1 = await DownloadStringAsync(url, webProxy, userAgent, 15, headers);
+            var result1 = await DownloadStringAsync(url, webProxy, userAgent, timeout, headers);
             if (result1?.Content.IsNotEmpty() == true)
             {
                 return result1;
@@ -148,7 +155,7 @@ public class DownloadService
 
         try
         {
-            var result2 = await DownloadStringViaDownloader(url, webProxy, userAgent, 15, headers);
+            var result2 = await DownloadStringViaDownloader(url, webProxy, userAgent, timeout, headers);
             if (result2.IsNotEmpty())
             {
                 return new DownloadStringResult(result2, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
@@ -174,11 +181,24 @@ public class DownloadService
     {
         try
         {
-            using var client = new HttpClient(new SocketsHttpHandler()
+            var connectTimeout = Math.Clamp(timeout / 5, 2, 5);
+            var handler = new SocketsHttpHandler
             {
                 Proxy = webProxy,
-                UseProxy = webProxy != null
-            });
+                UseProxy = webProxy != null,
+                ConnectTimeout = TimeSpan.FromSeconds(connectTimeout)
+            };
+            var certificateChainPolicy = CertPemManager.Instance.BuildCertificateChainPolicy();
+            if (certificateChainPolicy != null)
+            {
+                handler.SslOptions.CertificateChainPolicy = certificateChainPolicy;
+                handler.SslOptions.RemoteCertificateValidationCallback = null;
+            }
+
+            using var client = new HttpClient(handler)
+            {
+                Timeout = Timeout.InfiniteTimeSpan
+            };
 
             if (userAgent.IsNullOrEmpty())
             {
@@ -195,8 +215,9 @@ public class DownloadService
             }
 
             using var cts = new CancellationTokenSource();
+            cts.CancelAfter(TimeSpan.FromSeconds(timeout));
             using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cts.Token)
-                .WaitAsync(TimeSpan.FromSeconds(timeout), cts.Token);
+                .WaitAsync(cts.Token);
             response.EnsureSuccessStatusCode();
 
             var content = await response.Content.ReadAsStringAsync(cts.Token);
@@ -219,6 +240,7 @@ public class DownloadService
                 Error?.Invoke(this, new ErrorEventArgs(ex.InnerException));
             }
         }
+
         return null;
     }
 

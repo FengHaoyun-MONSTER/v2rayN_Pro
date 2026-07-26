@@ -95,6 +95,10 @@ public static class ConfigHandler
             EnableLegacyProtect = false,
         };
         config.GuiItem ??= new();
+        if (!Global.RootCertProviders.Contains(config.GuiItem.RootCertProvider))
+        {
+            config.GuiItem.RootCertProvider = Global.RootCertProviders.First();
+        }
         config.MsgUIItem ??= new();
 
         config.UiItem ??= new();
@@ -160,7 +164,7 @@ public static class ConfigHandler
         config.ClashUIItem.ConnectionsColumnItem ??= [];
         config.SystemProxyItem ??= new();
         config.WebDavItem ??= new();
-        config.CheckUpdateItem ??= new();  
+        config.CheckUpdateItem ??= new();
         config.Fragment4RayItem ??= new()
         {
             Packets = "tlshello",
