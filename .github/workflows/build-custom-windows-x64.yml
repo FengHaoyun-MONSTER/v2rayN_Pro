@@ -78,31 +78,45 @@ jobs:
       run: |
         $ErrorActionPreference = "Stop"
         Get-ChildItem -Path $env:OUTPUT -Filter "*.pdb" -Recurse | Remove-Item -Force
+        $coreArchive = Join-Path $env:RUNNER_TEMP "v2rayN-core-windows-64.zip"
+        $packageParent = Join-Path $env:RUNNER_TEMP "v2rayN-custom-package"
+        $packageRoot = Join-Path $packageParent "v2rayN-windows-64"
+        New-Item -ItemType Directory -Path $packageParent -Force | Out-Null
         Invoke-WebRequest `
           -Uri "https://github.com/2dust/v2rayN-core-bin/raw/refs/heads/master/v2rayN-windows-64.zip" `
-          -OutFile $env:ARCHIVE
-        7z a -tZip $env:ARCHIVE $env:OUTPUT -mx1
-        if ($LASTEXITCODE -ne 0) { throw "7z packaging failed" }
+          -OutFile $coreArchive
+        Expand-Archive -LiteralPath $coreArchive -DestinationPath $packageParent -Force
+        if (-not (Test-Path -LiteralPath $packageRoot -PathType Container)) {
+          throw "Official runtime archive has an unexpected directory layout"
+        }
+        Copy-Item -Path (Join-Path $env:OUTPUT "*") `
+          -Destination $packageRoot -Recurse -Force
+        Push-Location $packageParent
+        7z a -tZip $env:ARCHIVE "v2rayN-windows-64" -mx1
+        $packageExitCode = $LASTEXITCODE
+        Pop-Location
+        if ($packageExitCode -ne 0) { throw "7z packaging failed" }
+        "PACKAGE_ROOT=$packageRoot" >> $env:GITHUB_ENV
 
     - name: Verify Windows package
       shell: pwsh
       run: |
         $ErrorActionPreference = "Stop"
         $required = @(
-          "$env:OUTPUT\v2rayN.exe",
-          "$env:OUTPUT\AmazTool.exe",
-          "$env:OUTPUT\bin\xray\xray.exe",
-          "$env:OUTPUT\bin\geosite.dat",
-          "$env:OUTPUT\bin\cfst\cfst.exe",
-          "$env:OUTPUT\bin\cfst\ip.txt",
-          "$env:OUTPUT\guiConfigs\default-workspace-background.gif"
+          "$env:PACKAGE_ROOT\v2rayN.exe",
+          "$env:PACKAGE_ROOT\AmazTool.exe",
+          "$env:PACKAGE_ROOT\bin\xray\xray.exe",
+          "$env:PACKAGE_ROOT\bin\geosite.dat",
+          "$env:PACKAGE_ROOT\bin\cfst\cfst.exe",
+          "$env:PACKAGE_ROOT\bin\cfst\ip.txt",
+          "$env:PACKAGE_ROOT\guiConfigs\default-workspace-background.gif"
         )
         foreach ($file in $required) {
           if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
             throw "Missing required Windows runtime file: $file"
           }
         }
-        $xrayVersion = (& "$env:OUTPUT\bin\xray\xray.exe" version) -join "`n"
+        $xrayVersion = (& "$env:PACKAGE_ROOT\bin\xray\xray.exe" version) -join "`n"
         Write-Host $xrayVersion
         $archiveListing = (7z l $env:ARCHIVE) -join "`n"
         if ($archiveListing -notmatch 'v2rayN-windows-64[\\/]bin[\\/]geosite\.dat') {
