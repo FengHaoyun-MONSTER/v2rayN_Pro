@@ -1,0 +1,47 @@
+name: monitor upstream stable release
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Compare upstream stable release
+      run: |
+        set -euo pipefail
+        current="$(tr -d '[:space:]' < .github/UPSTREAM_VERSION)"
+        latest="$(gh api repos/2dust/v2rayN/releases/latest --jq '.tag_name' | sed 's/^v//')"
+        echo "Integrated upstream: $current"
+        echo "Latest upstream stable: $latest"
+        [[ "$latest" != "$current" ]] || exit 0
+
+        title="Upstream v2rayN ${latest} is ready for compatibility review"
+        existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq 'length')"
+        [[ "$existing" == "0" ]] || exit 0
+
+        notes="$(gh api "repos/2dust/v2rayN/releases/tags/${latest}" --jq '.html_url')"
+        cat > upstream-update.md <<EOF
+        Current integrated upstream: **${current}**
+
+        New stable upstream release: **${latest}**
+
+        Release notes: ${notes}
+
+        Create branch \`sync/upstream-${latest}-custom.N\`, merge tag \`${latest}\`, run the full test and packaging workflows, then publish a new custom release. Do not point clients directly at the upstream package.
+        EOF
+        gh issue create \
+          --repo "$GITHUB_REPOSITORY" \
+          --title "$title" \
+          --body-file upstream-update.md

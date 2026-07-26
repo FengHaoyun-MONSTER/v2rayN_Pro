@@ -1,13 +1,19 @@
-name: Code Test
+name: custom code test
 
 on:
   pull_request:
     branches:
-      - master
+      - custom/main
     paths:
-      - 'v2rayN/ServiceLib/Services/CoreConfig/**'
-      - 'v2rayN/ServiceLib/Handler/Fmt/**'
-      - '.github/workflows/test.yml'
+      - 'v2rayN/**'
+      - 'package-osx.sh'
+      - '.github/workflows/**'
+  push:
+    branches:
+      - custom/main
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -16,14 +22,11 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v7
       with:
-        submodules: 'recursive'
-        fetch-depth: '0'
-
+        submodules: recursive
+        fetch-depth: 0
     - name: Setup .NET
-      uses: actions/setup-dotnet@v5.4.0
+      uses: actions/setup-dotnet@v6.0.0
       with:
-        dotnet-version: '8.0.x'
-
-    - name: Test Code
-      working-directory: ./v2rayN
-      run: dotnet test ./ServiceLib.Tests
+        dotnet-version: 10.0.1xx
+    - name: Run ServiceLib tests
+      run: dotnet test ./v2rayN/ServiceLib.Tests/ServiceLib.Tests.csproj -c Release

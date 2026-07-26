@@ -843,7 +843,16 @@ public class Utils
     {
         try
         {
-            return Assembly.GetExecutingAssembly()?.GetName()?.Version?.ToString(3) ?? "0.0";
+            var assembly = Assembly.GetExecutingAssembly();
+            var informationalVersion = assembly
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+                .InformationalVersion?
+                .Split('+', StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault();
+
+            return informationalVersion.IsNotEmpty()
+                ? informationalVersion
+                : assembly.GetName().Version?.ToString(3) ?? "0.0";
         }
         catch (Exception ex)
         {

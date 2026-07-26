@@ -1,0 +1,132 @@
+name: build custom Windows x64
+
+on:
+  pull_request:
+    branches:
+      - custom/main
+    paths:
+      - 'v2rayN/**'
+      - '.github/workflows/build-custom-windows-x64.yml'
+      - '.github/workflows/release-custom.yml'
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Custom version without the leading v
+        required: true
+        default: 7.23.4-custom.1
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-x64:
+    runs-on: windows-latest
+    env:
+      OUTPUT: ${{ github.workspace }}\v2rayN-windows-64
+      ARCHIVE: ${{ github.workspace }}\v2rayN-windows-64.zip
+      RID: win-x64
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+      with:
+        submodules: recursive
+        fetch-depth: 0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v6.0.0
+      with:
+        dotnet-version: 10.0.1xx
+
+    - name: Resolve version
+      shell: pwsh
+      run: |
+        $version = "${{ inputs.version }}"
+        if ([string]::IsNullOrWhiteSpace($version)) {
+          [xml]$props = Get-Content -LiteralPath ".\v2rayN\Directory.Build.props"
+          $version = $props.Project.PropertyGroup.Version | Select-Object -First 1
+        }
+        if ([string]::IsNullOrWhiteSpace($version)) {
+          throw "Unable to resolve application version"
+        }
+        "APP_VERSION=$version" >> $env:GITHUB_ENV
+
+    - name: Publish v2rayN
+      shell: pwsh
+      run: |
+        dotnet publish ".\v2rayN\v2rayN\v2rayN.csproj" `
+          -c Release -r $env:RID -p:SelfContained=true `
+          -p:EnableWindowsTargeting=true -p:Version="$env:APP_VERSION" `
+          -o $env:OUTPUT
+
+    - name: Publish AmazTool
+      shell: pwsh
+      run: |
+        dotnet publish ".\v2rayN\AmazTool\AmazTool.csproj" `
+          -c Release -r $env:RID -p:SelfContained=true -p:PublishTrimmed=true `
+          -p:EnableWindowsTargeting=true -p:Version="$env:APP_VERSION" `
+          -o $env:OUTPUT
+
+    - name: Add official runtime assets
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = "Stop"
+        Get-ChildItem -Path $env:OUTPUT -Filter "*.pdb" -Recurse | Remove-Item -Force
+        $coreArchive = Join-Path $env:RUNNER_TEMP "v2rayN-core-windows-64.zip"
+        $packageParent = Join-Path $env:RUNNER_TEMP "v2rayN-custom-package"
+        $packageRoot = Join-Path $packageParent "v2rayN-windows-64"
+        New-Item -ItemType Directory -Path $packageParent -Force | Out-Null
+        Invoke-WebRequest `
+          -Uri "https://github.com/2dust/v2rayN-core-bin/raw/refs/heads/master/v2rayN-windows-64.zip" `
+          -OutFile $coreArchive
+        Expand-Archive -LiteralPath $coreArchive -DestinationPath $packageParent -Force
+        if (-not (Test-Path -LiteralPath $packageRoot -PathType Container)) {
+          throw "Official runtime archive has an unexpected directory layout"
+        }
+        Copy-Item -Path (Join-Path $env:OUTPUT "*") `
+          -Destination $packageRoot -Recurse -Force
+        Push-Location $packageParent
+        7z a -tZip $env:ARCHIVE "v2rayN-windows-64" -mx1
+        $packageExitCode = $LASTEXITCODE
+        Pop-Location
+        if ($packageExitCode -ne 0) { throw "7z packaging failed" }
+        "PACKAGE_ROOT=$packageRoot" >> $env:GITHUB_ENV
+
+    - name: Verify Windows package
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = "Stop"
+        $required = @(
+          "$env:PACKAGE_ROOT\v2rayN.exe",
+          "$env:PACKAGE_ROOT\AmazTool.exe",
+          "$env:PACKAGE_ROOT\bin\xray\xray.exe",
+          "$env:PACKAGE_ROOT\bin\geosite.dat",
+          "$env:PACKAGE_ROOT\bin\cfst\cfst.exe",
+          "$env:PACKAGE_ROOT\bin\cfst\ip.txt",
+          "$env:PACKAGE_ROOT\guiConfigs\default-workspace-background.gif"
+        )
+        foreach ($file in $required) {
+          if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
+            throw "Missing required Windows runtime file: $file"
+          }
+        }
+        $xrayVersion = (& "$env:PACKAGE_ROOT\bin\xray\xray.exe" version) -join "`n"
+        Write-Host $xrayVersion
+        $archiveListing = (7z l $env:ARCHIVE) -join "`n"
+        if ($archiveListing -notmatch 'v2rayN-windows-64[\\/]bin[\\/]geosite\.dat') {
+          throw "geosite.dat missing from update ZIP"
+        }
+
+    - name: Upload Windows package
+      uses: actions/upload-artifact@v7
+      with:
+        name: release-custom-windows-x64
+        path: v2rayN-windows-64.zip
+        if-no-files-found: error
+        retention-days: 14

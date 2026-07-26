@@ -5,52 +5,48 @@ public class SemanticVersion
     private readonly int major;
     private readonly int minor;
     private readonly int patch;
-    private readonly string version;
+    private readonly int revision;
+    private readonly string version = "0.0.0";
 
     public SemanticVersion(int major, int minor, int patch)
     {
         this.major = major;
         this.minor = minor;
         this.patch = patch;
+        revision = 0;
         version = $"{major}.{minor}.{patch}";
     }
 
-    public SemanticVersion(string? version)
+    public SemanticVersion(string? value)
     {
         try
         {
-            if (string.IsNullOrEmpty(version))
+            if (string.IsNullOrWhiteSpace(value))
             {
-                major = 0;
-                minor = 0;
-                patch = 0;
                 return;
             }
-            this.version = version.RemovePrefix('v');
 
-            var parts = this.version.Split('.');
-            if (parts.Length == 2)
-            {
-                major = int.Parse(parts.First());
-                minor = int.Parse(parts.Last());
-                patch = 0;
-            }
-            else if (parts.Length is 3 or 4)
-            {
-                major = int.Parse(parts[0]);
-                minor = int.Parse(parts[1]);
-                patch = int.Parse(parts[2]);
-            }
-            else
+            version = value.Trim().RemovePrefix('v');
+            var match = Regex.Match(
+                version,
+                @"^(?<major>\d+)\.(?<minor>\d+)(?:\.(?<patch>\d+))?(?:(?:-custom\.|\.)(?<revision>\d+))?(?:[-+].*)?$",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (!match.Success)
             {
                 throw new ArgumentException("Invalid version string");
             }
+
+            major = int.Parse(match.Groups["major"].Value);
+            minor = int.Parse(match.Groups["minor"].Value);
+            patch = match.Groups["patch"].Success ? int.Parse(match.Groups["patch"].Value) : 0;
+            revision = match.Groups["revision"].Success ? int.Parse(match.Groups["revision"].Value) : 0;
         }
         catch
         {
             major = 0;
             minor = 0;
             patch = 0;
+            revision = 0;
         }
     }
 
@@ -58,7 +54,10 @@ public class SemanticVersion
     {
         if (obj is SemanticVersion other)
         {
-            return major == other.major && minor == other.minor && patch == other.patch;
+            return major == other.major
+                && minor == other.minor
+                && patch == other.patch
+                && revision == other.revision;
         }
         else
         {
@@ -68,7 +67,7 @@ public class SemanticVersion
 
     public override int GetHashCode()
     {
-        return major.GetHashCode() ^ minor.GetHashCode() ^ patch.GetHashCode();
+        return HashCode.Combine(major, minor, patch, revision);
     }
 
     /// <summary>
@@ -136,10 +135,7 @@ public class SemanticVersion
                 {
                     return true;
                 }
-                else
-                {
-                    return true;
-                }
+                return revision >= other.revision;
             }
         }
     }
@@ -174,10 +170,7 @@ public class SemanticVersion
                 {
                     return false;
                 }
-                else
-                {
-                    return true;
-                }
+                return revision <= other.revision;
             }
         }
     }

@@ -1,19 +1,32 @@
-name: build custom macOS arm64 DMG
+name: build custom macOS arm64
 
 on:
+  pull_request:
+    branches:
+      - custom/main
+    paths:
+      - 'v2rayN/**'
+      - 'package-osx.sh'
+      - '.github/workflows/build-custom-macos-arm64.yml'
+      - '.github/workflows/release-custom.yml'
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       version:
-        description: Version shown by the macOS application bundle
-        required: false
-        default: 7.23.2-custom
+        description: Custom version without the leading v
+        required: true
+        default: 7.23.4-custom.1
         type: string
 
 permissions:
   contents: read
 
 jobs:
-  build-arm64-dmg:
+  build-arm64:
     runs-on: macos-latest
     env:
       OUTPUT: ${{ github.workspace }}/v2rayN-macos-arm64
@@ -31,28 +44,50 @@ jobs:
       with:
         dotnet-version: 10.0.1xx
 
+    - name: Resolve version
+      run: |
+        version="${{ inputs.version }}"
+        if [[ -z "$version" ]]; then
+          version="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' v2rayN/Directory.Build.props | head -n 1)"
+        fi
+        [[ -n "$version" ]] || { echo "Unable to resolve application version" >&2; exit 1; }
+        echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+
     - name: Publish v2rayN
       working-directory: ./v2rayN
-      run: dotnet publish ./v2rayN.Desktop/v2rayN.Desktop.csproj -c Release -r "$RID" -p:SelfContained=true -o "$OUTPUT"
+      run: >-
+        dotnet publish ./v2rayN.Desktop/v2rayN.Desktop.csproj
+        -c Release -r "$RID" -p:SelfContained=true
+        -p:Version="$APP_VERSION" -o "$OUTPUT"
 
     - name: Publish AmazTool
       working-directory: ./v2rayN
-      run: dotnet publish ./AmazTool/AmazTool.csproj -c Release -r "$RID" -p:SelfContained=true -p:PublishTrimmed=true -o "$OUTPUT"
+      run: >-
+        dotnet publish ./AmazTool/AmazTool.csproj
+        -c Release -r "$RID" -p:SelfContained=true -p:PublishTrimmed=true
+        -p:Version="$APP_VERSION" -o "$OUTPUT"
 
     - name: Remove debug symbols
       run: find "$OUTPUT" -type f -name '*.pdb' -delete
 
-    - name: Install DMG tools
+    - name: Install package tools
       run: brew install create-dmg p7zip
 
-    - name: Package DMG
+    - name: Package update ZIP and installer DMG
       run: |
+        set -euo pipefail
         chmod 755 package-osx.sh
-        ./package-osx.sh macos-arm64 "$OUTPUT" "${{ inputs.version }}"
+        ./package-osx.sh macos-arm64 "$OUTPUT" "$APP_VERSION"
+        7z a -tZip v2rayN-macos-arm64.zip v2rayN-macos-arm64 -mx1
 
-    - name: Verify DMG and ARM64 runtime
+    - name: Verify DMG, ZIP, and ARM64 runtime
       run: |
+        set -euo pipefail
         hdiutil verify v2rayN-macos-arm64.dmg
+        7z l v2rayN-macos-arm64.zip | grep -q 'v2rayN-macos-arm64/bin/geosite.dat'
+        7z l v2rayN-macos-arm64.zip | grep -q 'v2rayN-macos-arm64/bin/cfst/cfst'
+        7z l v2rayN-macos-arm64.zip | grep -q 'v2rayN-macos-arm64/guiConfigs/default-workspace-background.gif'
+
         MOUNT_POINT="$(mktemp -d)"
         hdiutil attach v2rayN-macos-arm64.dmg -readonly -nobrowse -mountpoint "$MOUNT_POINT"
         trap 'hdiutil detach "$MOUNT_POINT"' EXIT
@@ -61,6 +96,7 @@ jobs:
         test -x "$APP/v2rayN"
         test -x "$APP/bin/cfst/cfst"
         test -s "$APP/bin/cfst/ip.txt"
+        test -s "$APP/bin/geosite.dat"
         test -s "$APP/guiConfigs/default-workspace-background.gif"
         file "$APP/v2rayN" | grep -q 'arm64'
         file "$APP/bin/cfst/cfst" | grep -q 'arm64'
@@ -76,10 +112,12 @@ jobs:
           fi
         done < <(find "$APP" -type f -print0)
 
-    - name: Upload DMG
+    - name: Upload macOS packages
       uses: actions/upload-artifact@v7
       with:
-        name: v2rayN-custom-macos-arm64-dmg
-        path: v2rayN-macos-arm64.dmg
+        name: release-custom-macos-arm64
+        path: |
+          v2rayN-macos-arm64.zip
+          v2rayN-macos-arm64.dmg
         if-no-files-found: error
         retention-days: 14

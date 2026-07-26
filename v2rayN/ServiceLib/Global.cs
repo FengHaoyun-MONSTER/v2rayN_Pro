@@ -42,6 +42,11 @@ public class Global
     public const string KillAsSudoOSXShellFileName = NamespaceSample + "kill_as_sudo_osx_sh";
     public const string KillAsSudoLinuxShellFileName = NamespaceSample + "kill_as_sudo_linux_sh";
     public const string SingboxFakeIPFilterFileName = NamespaceSample + "singbox_fakeip_filter";
+    public const string ChromeRootCertFileName = NamespaceSample + "chrome_roots_pem";
+    public const string MozillaRootCertFileName = NamespaceSample + "mozilla_roots_pem";
+
+    public const string ChromeRootProvider = "chrome";
+    public const string MozillaRootProvider = "mozilla";
 
     public const string DefaultSecurity = "auto";
     public const string DefaultNetwork = "raw";
@@ -645,7 +650,9 @@ public class Global
         { ECoreType.overtls, "ShadowsocksR-Live/overtls" },
         { ECoreType.shadowquic, "spongebob888/shadowquic" },
         { ECoreType.mieru, "enfein/mieru" },
-        { ECoreType.v2rayN, "2dust/v2rayN" },
+        // The customized GUI must only update from our validated releases.
+        // Core binaries continue to use their respective upstream repositories.
+        { ECoreType.v2rayN, "FengHaoyun-MONSTER/v2rayN_Pro" },
     };
 
     public static readonly List<string> OtherGeoUrls =
@@ -730,6 +737,13 @@ public class Global
         "unreachable",
         "drop",
         "reply",
+    ];
+
+    public static readonly List<string> RootCertProviders =
+    [
+        "system",
+        ChromeRootProvider,
+        MozillaRootProvider,
     ];
 
     #endregion const

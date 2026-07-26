@@ -74,6 +74,7 @@ public class GUIItem
     public int TrayMenuServersLimit { get; set; } = 20;
     public bool EnableHWA { get; set; } = false;
     public bool EnableLog { get; set; } = true;
+    public string? RootCertProvider { get; set; }
 }
 
 [Serializable]
@@ -105,6 +106,7 @@ public class UIItem
     public bool MacOSShowInDock { get; set; }
     public List<ColumnItem> MainColumnItem { get; set; }
     public List<WindowSizeItem> WindowSizeItem { get; set; }
+    public bool HideColumnIpInfo { get; set; }
 }
 
 [Serializable]
