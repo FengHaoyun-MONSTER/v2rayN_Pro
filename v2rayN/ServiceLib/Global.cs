@@ -650,7 +650,9 @@ public class Global
         { ECoreType.overtls, "ShadowsocksR-Live/overtls" },
         { ECoreType.shadowquic, "spongebob888/shadowquic" },
         { ECoreType.mieru, "enfein/mieru" },
-        { ECoreType.v2rayN, "2dust/v2rayN" },
+        // The customized GUI must only update from our validated releases.
+        // Core binaries continue to use their respective upstream repositories.
+        { ECoreType.v2rayN, "FengHaoyun-MONSTER/v2rayN_Pro" },
     };
 
     public static readonly List<string> OtherGeoUrls =

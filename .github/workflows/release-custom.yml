@@ -1,0 +1,129 @@
+name: release custom v2rayN
+
+on:
+  push:
+    tags:
+      - '*-custom.*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing tag on the current custom/main commit
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+
+    - name: Validate release tag
+      id: version
+      env:
+        REQUESTED_TAG: ${{ inputs.release_tag }}
+      run: |
+        set -euo pipefail
+        tag="${GITHUB_REF_NAME}"
+        if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+          tag="${REQUESTED_TAG}"
+          tag_commit="$(git rev-list -n 1 "$tag")"
+          [[ "$tag_commit" == "$GITHUB_SHA" ]] || {
+            echo "Manual releases must run from the commit referenced by $tag." >&2
+            exit 1
+          }
+        fi
+        [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+-custom\.[0-9]+$ ]] || {
+          echo "Invalid custom release tag: $tag" >&2
+          exit 1
+        }
+        echo "tag=$tag" >> "$GITHUB_OUTPUT"
+        echo "version=$tag" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: metadata
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+      with:
+        submodules: recursive
+        fetch-depth: 0
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v6.0.0
+      with:
+        dotnet-version: 10.0.1xx
+    - name: Run tests
+      run: dotnet test ./v2rayN/ServiceLib.Tests/ServiceLib.Tests.csproj -c Release
+
+  windows-x64:
+    needs: [metadata, test]
+    uses: ./.github/workflows/build-custom-windows-x64.yml
+    with:
+      version: ${{ needs.metadata.outputs.version }}
+
+  macos-arm64:
+    needs: [metadata, test]
+    uses: ./.github/workflows/build-custom-macos-arm64.yml
+    with:
+      version: ${{ needs.metadata.outputs.version }}
+
+  publish:
+    needs: [metadata, windows-x64, macos-arm64]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+      RELEASE_VERSION: ${{ needs.metadata.outputs.version }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Download validated packages
+      uses: actions/download-artifact@v8
+      with:
+        pattern: release-custom-*
+        path: dist
+        merge-multiple: true
+
+    - name: Generate checksums and release notes
+      run: |
+        set -euo pipefail
+        cd dist
+        sha256sum v2rayN-windows-64.zip v2rayN-macos-arm64.zip v2rayN-macos-arm64.dmg > SHA256SUMS.txt
+        cat > RELEASE_NOTES.md <<EOF
+        ## v2rayN Pro ${RELEASE_VERSION}
+
+        - Based on upstream v2rayN $(cat ../.github/UPSTREAM_VERSION)
+        - Preserves the customized home page, background, subscription automation, real-delay sorting, country probing, Cloudflare best-node generation, and HWID support
+        - Includes validated Windows x64 and macOS Apple Silicon packages
+
+        Use the ZIP assets for in-app updates. Use the DMG for a new macOS installation.
+        EOF
+
+    - name: Create GitHub Release
+      run: |
+        set -euo pipefail
+        if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          gh release upload "$RELEASE_TAG" dist/v2rayN-windows-64.zip dist/v2rayN-macos-arm64.zip dist/v2rayN-macos-arm64.dmg dist/SHA256SUMS.txt --clobber --repo "$GITHUB_REPOSITORY"
+        else
+          gh release create "$RELEASE_TAG" \
+            dist/v2rayN-windows-64.zip \
+            dist/v2rayN-macos-arm64.zip \
+            dist/v2rayN-macos-arm64.dmg \
+            dist/SHA256SUMS.txt \
+            --verify-tag \
+            --latest \
+            --title "v2rayN Pro ${RELEASE_VERSION}" \
+            --notes-file dist/RELEASE_NOTES.md \
+            --repo "$GITHUB_REPOSITORY"
+        fi
