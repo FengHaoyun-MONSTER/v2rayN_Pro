@@ -27,6 +27,7 @@ public class MainWindowViewModel : MyReactiveObject
     private readonly CancellationTokenSource _networkHealthCts = new();
     private int _consecutiveNetworkFailures;
     private DateTimeOffset? _lastNetworkRepairAt;
+    private bool _networkHealthMonitorEnabled;
 
     #region Menu
 
@@ -365,6 +366,9 @@ public class MainWindowViewModel : MyReactiveObject
         }
         await RefreshServersDispatcherAsync();
 
+        _networkHealthMonitorEnabled = Utils.IsWindows()
+            && !DesignMode
+            && await HasExistingSubscriptionConfiguration();
         await Reload();
         StartNetworkHealthMonitor();
     }
@@ -576,6 +580,18 @@ public class MainWindowViewModel : MyReactiveObject
 
     public async Task UpdateSubscriptionProcess(string subId, bool blProxy)
     {
+        if (!await HasExistingSubscriptionConfiguration())
+        {
+            // Keep the established first-run onboarding chain unchanged.
+            var initialSuccess = await Task.Run(
+                async () => await SubscriptionHandler.UpdateProcess(_config, subId, blProxy, UpdateTaskHandler));
+            if (initialSuccess)
+            {
+                AppEvents.SubscriptionAutoSpeedtestRequested.Publish();
+            }
+            return;
+        }
+
         var success = await UpdateSubscriptionProcessCore(subId, blProxy, false, -1);
         if (!success)
         {
@@ -712,6 +728,20 @@ public class MainWindowViewModel : MyReactiveObject
             .ToList();
     }
 
+    private async Task<bool> HasExistingSubscriptionConfiguration()
+    {
+        var subscriptionIds = await GetSubscriptionIds("");
+        if (subscriptionIds.Count == 0)
+        {
+            return false;
+        }
+
+        var profiles = await AppManager.Instance.ProfileItems(string.Empty);
+        return NetworkRecoveryEligibility.CanRun(
+            subscriptionIds.Count,
+            profiles?.Count ?? 0);
+    }
+
     private async Task<bool> RestoreSubscriptionSnapshots(IEnumerable<string> subscriptionIds)
     {
         var restored = false;
@@ -748,11 +778,12 @@ public class MainWindowViewModel : MyReactiveObject
 
     private void StartNetworkHealthMonitor()
     {
-        if (!Utils.IsWindows() || DesignMode)
+        if (!_networkHealthMonitorEnabled)
         {
             return;
         }
 
+        _networkHealthMonitorEnabled = true;
         PublishNetworkStatus(
             ENetworkAvailabilityState.Checking,
             "正在检查当前网络",
@@ -781,7 +812,10 @@ public class MainWindowViewModel : MyReactiveObject
 
     private async Task CheckNetworkHealth()
     {
-        if (_networkRepairSemaphore.CurrentCount == 0 || _subscriptionWorkflowSemaphore.CurrentCount == 0)
+        if (!_networkHealthMonitorEnabled
+            || !await HasExistingSubscriptionConfiguration()
+            || _networkRepairSemaphore.CurrentCount == 0
+            || _subscriptionWorkflowSemaphore.CurrentCount == 0)
         {
             return;
         }
@@ -1072,7 +1106,7 @@ public class MainWindowViewModel : MyReactiveObject
             await Task.Run(async () =>
             {
                 await LoadCore(allResult.MainResult.Context, allResult.PreSocksResult?.Context);
-                if (!CoreManager.Instance.IsRunning)
+                if (_networkHealthMonitorEnabled && !CoreManager.Instance.IsRunning)
                 {
                     throw new InvalidOperationException(ResUI.FailedToRunCore);
                 }
@@ -1099,7 +1133,7 @@ public class MainWindowViewModel : MyReactiveObject
 
             ReloadResult(showClashUI);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (_networkHealthMonitorEnabled)
         {
             Logging.SaveLog("Core reload failed; clearing the operating-system proxy before recovery.", ex);
             await SysProxyHandler.UpdateSysProxy(_config, true);

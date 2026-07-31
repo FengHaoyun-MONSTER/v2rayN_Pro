@@ -40,7 +40,7 @@ public partial class MainWindow
         btnNewUpdate.Click += MenuCheckUpdate_Click;
         menuBackupAndRestore.Click += MenuBackupAndRestore_Click;
         btnHome.Click += async (_, _) => await SetMainWorkspacePage(EMainWorkspacePage.Home);
-        btnAddSubscription.Click += async (_, _) => await OpenAddSubscriptionAsync();
+        btnAddSubscription.Click += (_, _) => AppEvents.AddSubscriptionRequested.Publish();
         btnProxy.Click += async (_, _) => await SetMainWorkspacePage(EMainWorkspacePage.Proxy);
         AnimationBehavior.AddLoadedHandler(workspaceBackgroundImage, (_, _) => UpdateWorkspaceBackgroundAnimationState());
         AnimationBehavior.AddErrorHandler(workspaceBackgroundImage, WorkspaceBackgroundAnimation_Error);
@@ -369,26 +369,12 @@ public partial class MainWindow
 
             await SetMainWorkspacePage(EMainWorkspacePage.Home);
             ShowHideWindow(true);
-            Logging.SaveLog("Empty first-run configuration detected. Opening the add subscription window.");
-            await OpenAddSubscriptionAsync();
+            AppEvents.AddSubscriptionRequested.Publish();
         }
         catch (Exception ex)
         {
             Logging.SaveLog("Check empty startup subscription failed", ex);
         }
-    }
-
-    private async Task OpenAddSubscriptionAsync()
-    {
-        if (ViewModel?.ProfilesViewModel is null)
-        {
-            Logging.SaveLog("Add subscription failed because ProfilesViewModel is not initialized.");
-            NoticeManager.Instance.Enqueue(ResUI.OperationFailed);
-            return;
-        }
-
-        Logging.SaveLog("Opening the add subscription window.");
-        await ViewModel.ProfilesViewModel.AddSubscription();
     }
 
     private void RestoreUI()
