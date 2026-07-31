@@ -14,6 +14,8 @@ public class CoreManager
 
     private ProcessService? _processService;
     private ProcessService? _processPreService;
+    public bool IsRunning => _processService is { HasExited: false };
+
     private bool _linuxSudo = false;
     private Func<bool, string, Task>? _updateFunc;
     private const string _tag = "CoreHandler";

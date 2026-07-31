@@ -19,6 +19,15 @@ public class MainWindowViewModel : MyReactiveObject
     public BackupAndRestoreViewModel BackupAndRestoreViewModel { get; } = new();
     public StatusBarViewModel StatusBarViewModel { get; } = StatusBarViewModel.Instance;
 
+    private const int SlowNetworkDelay = 500;
+    private const int AutomaticRepairFailureThreshold = 3;
+    private static readonly TimeSpan RepairedStatusDuration = TimeSpan.FromMinutes(10);
+    private readonly SemaphoreSlim _subscriptionWorkflowSemaphore = new(1, 1);
+    private readonly SemaphoreSlim _networkRepairSemaphore = new(1, 1);
+    private readonly CancellationTokenSource _networkHealthCts = new();
+    private int _consecutiveNetworkFailures;
+    private DateTimeOffset? _lastNetworkRepairAt;
+
     #region Menu
 
     //servers
@@ -265,6 +274,17 @@ public class MainWindowViewModel : MyReactiveObject
             .AsObservable()
             .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(async subId => await UpdateSubscriptionProcess(subId, false));
+        AppEvents.OneClickNetworkSetupRequested
+            .AsObservable()
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
+            .Subscribe(async _ => await RunNetworkSetup(false));
+        AppEvents.EditCurrentSubscriptionRequested
+            .AsObservable()
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
+            .Subscribe(async _ => await ProfilesViewModel.EditCurrentSubscription());
+        AppEvents.AppExitRequested
+            .AsObservable()
+            .Subscribe(_ => _networkHealthCts.Cancel());
         AppEvents.HasUpdateNotified
             .AsObservable()
             .ObserveOn(RxSchedulers.MainThreadScheduler)
@@ -337,7 +357,7 @@ public class MainWindowViewModel : MyReactiveObject
         await ProfileExManager.Instance.Init();
         await CoreManager.Instance.Init(_config, UpdateHandler);
         await CertPemManager.Instance.Init(_config);
-        TaskManager.Instance.RegUpdateTask(_config, UpdateTaskHandler);
+        TaskManager.Instance.RegUpdateTask(_config, UpdateTaskHandler, UpdateSubscriptionProcess);
 
         if (_config.GuiItem.EnableStatistics || _config.GuiItem.DisplayRealTimeSpeed)
         {
@@ -346,6 +366,7 @@ public class MainWindowViewModel : MyReactiveObject
         await RefreshServersDispatcherAsync();
 
         await Reload();
+        StartNetworkHealthMonitor();
     }
 
     #endregion Init
@@ -555,11 +576,381 @@ public class MainWindowViewModel : MyReactiveObject
 
     public async Task UpdateSubscriptionProcess(string subId, bool blProxy)
     {
-        var success = await Task.Run(async () => await SubscriptionHandler.UpdateProcess(_config, subId, blProxy, UpdateTaskHandler));
-        if (success)
+        var success = await UpdateSubscriptionProcessCore(subId, blProxy, false, -1);
+        if (!success)
         {
-            AppEvents.SubscriptionAutoSpeedtestRequested.Publish();
+            return;
         }
+
+        if (await ConnectionHandler.HasProxyInternetAccess())
+        {
+            _consecutiveNetworkFailures = 0;
+            PublishHealthyNetworkStatus();
+        }
+        else
+        {
+            PublishNetworkStatus(
+                ENetworkAvailabilityState.Repairing,
+                "当前网络不可用，正在自动修复",
+                "订阅和测速已完成，等待下一次网络检查");
+        }
+    }
+
+    private async Task<bool> UpdateSubscriptionProcessCore(
+        string subId,
+        bool blProxy,
+        bool recoveryMode,
+        int currentDelay)
+    {
+        await _subscriptionWorkflowSemaphore.WaitAsync();
+        try
+        {
+            var subscriptionIds = await GetSubscriptionIds(subId);
+            if (subscriptionIds.Count == 0)
+            {
+                PublishNetworkStatus(
+                    ENetworkAvailabilityState.NoAvailableNode,
+                    "无可用节点，请联系客服",
+                    "没有可更新的订阅");
+                return false;
+            }
+
+            var activeBeforeUpdate = _config.IndexId;
+            var keepActiveServer = !recoveryMode
+                && _config.SystemProxyItem.SysProxyType == ESysProxyType.ForcedChange
+                && await AppManager.Instance.GetProfileItem(activeBeforeUpdate) is not null;
+
+            foreach (var id in subscriptionIds)
+            {
+                await SubscriptionSnapshotHandler.CaptureAsync(_config, id);
+            }
+
+            var success = await Task.Run(
+                async () => await SubscriptionHandler.UpdateProcess(_config, subId, blProxy, UpdateTaskHandler));
+            if (!success)
+            {
+                var restored = await RestoreSubscriptionSnapshots(subscriptionIds);
+                if (restored)
+                {
+                    await RefreshServersDispatcherAsync();
+                    await Reload();
+                }
+                return false;
+            }
+
+            var testResult = await ProfilesViewModel.TestAndSortSubscriptions(subscriptionIds);
+            var restoredIds = new List<string>();
+            foreach (var id in subscriptionIds.Where(id => !testResult.AvailableSubscriptionIds.Contains(id)))
+            {
+                if (await SubscriptionSnapshotHandler.RestoreAsync(_config, id))
+                {
+                    restoredIds.Add(id);
+                }
+            }
+            if (restoredIds.Count > 0)
+            {
+                Logging.SaveLog($"New subscription nodes were unavailable; restored snapshots for {restoredIds.Count} subscription(s).");
+                testResult = await ProfilesViewModel.TestAndSortSubscriptions(subscriptionIds);
+            }
+
+            foreach (var id in testResult.AvailableSubscriptionIds)
+            {
+                await SubscriptionSnapshotHandler.CaptureAsync(_config, id);
+            }
+
+            await RefreshSubscriptions();
+            var currentProfile = await AppManager.Instance.GetProfileItem(_config.IndexId);
+            var proxyConfigured = true;
+            if (recoveryMode)
+            {
+                if (testResult.BestProfile is not null
+                    && LatencySortHelper.ShouldSwitchToCandidate(
+                        currentProfile is not null,
+                        currentDelay,
+                        testResult.BestProfile.Delay))
+                {
+                    proxyConfigured = await ActivateServer(testResult.BestProfile.IndexId);
+                }
+                else
+                {
+                    proxyConfigured = await StatusBarViewModel.SetListenerType(ESysProxyType.ForcedChange);
+                }
+            }
+            else if (!keepActiveServer || currentProfile is null)
+            {
+                if (testResult.BestProfile is null)
+                {
+                    PublishNetworkStatus(
+                        ENetworkAvailabilityState.NoAvailableNode,
+                        "无可用节点，请联系客服",
+                        "订阅中的所有节点均不可用");
+                    return false;
+                }
+                proxyConfigured = await ActivateServer(testResult.BestProfile.IndexId);
+            }
+
+            return proxyConfigured
+                && (testResult.BestProfile is not null
+                    || await AppManager.Instance.GetProfileItem(_config.IndexId) is not null);
+        }
+        finally
+        {
+            _subscriptionWorkflowSemaphore.Release();
+        }
+    }
+
+    private async Task<List<string>> GetSubscriptionIds(string subId)
+    {
+        var subscriptions = await AppManager.Instance.SubItems() ?? [];
+        return subscriptions
+            .Where(item => item.Enabled
+                && item.Id.IsNotEmpty()
+                && item.Url.IsNotEmpty()
+                && (subId.IsNullOrEmpty() || item.Id == subId))
+            .Select(item => item.Id)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+    }
+
+    private async Task<bool> RestoreSubscriptionSnapshots(IEnumerable<string> subscriptionIds)
+    {
+        var restored = false;
+        foreach (var id in subscriptionIds)
+        {
+            restored |= await SubscriptionSnapshotHandler.RestoreAsync(_config, id);
+        }
+        return restored;
+    }
+
+    private async Task<bool> ActivateServer(string indexId)
+    {
+        if (indexId.IsNullOrEmpty() || await AppManager.Instance.GetProfileItem(indexId) is null)
+        {
+            return false;
+        }
+
+        var changed = _config.IndexId != indexId;
+        if (changed)
+        {
+            await ConfigHandler.SetDefaultServerIndex(_config, indexId);
+            await RefreshServersDispatcherAsync();
+        }
+        await Reload();
+        if (!CoreManager.Instance.IsRunning)
+        {
+            Logging.SaveLog($"Network recovery could not start the selected server. Server={indexId}.");
+            return false;
+        }
+        var proxyConfigured = await StatusBarViewModel.SetListenerType(ESysProxyType.ForcedChange);
+        Logging.SaveLog($"Network recovery activated server. Server={indexId}, Changed={changed}.");
+        return proxyConfigured;
+    }
+
+    private void StartNetworkHealthMonitor()
+    {
+        if (!Utils.IsWindows() || DesignMode)
+        {
+            return;
+        }
+
+        PublishNetworkStatus(
+            ENetworkAvailabilityState.Checking,
+            "正在检查当前网络",
+            "首次检查将在服务启动后自动进行");
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(15), _networkHealthCts.Token);
+                using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+                do
+                {
+                    await CheckNetworkHealth();
+                }
+                while (await timer.WaitForNextTickAsync(_networkHealthCts.Token));
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                Logging.SaveLog("Network health monitor failed", ex);
+            }
+        });
+    }
+
+    private async Task CheckNetworkHealth()
+    {
+        if (_networkRepairSemaphore.CurrentCount == 0 || _subscriptionWorkflowSemaphore.CurrentCount == 0)
+        {
+            return;
+        }
+
+        if (!await ConnectionHandler.HasDirectInternetAccess())
+        {
+            _consecutiveNetworkFailures = 0;
+            PublishNetworkStatus(
+                ENetworkAvailabilityState.LocalNetworkUnavailable,
+                "本机网络不可用，请检查 Wi-Fi 或网线");
+            return;
+        }
+
+        var active = await AppManager.Instance.GetProfileItem(_config.IndexId);
+        if (active is null)
+        {
+            var subscriptionIds = await GetSubscriptionIds("");
+            if (subscriptionIds.Count > 0)
+            {
+                _consecutiveNetworkFailures++;
+                PublishNetworkStatus(
+                    ENetworkAvailabilityState.Repairing,
+                    "当前网络不可用，正在自动修复",
+                    $"尚未选择可用节点，连续检测 {_consecutiveNetworkFailures}/{AutomaticRepairFailureThreshold}");
+                if (_consecutiveNetworkFailures >= AutomaticRepairFailureThreshold)
+                {
+                    await RunNetworkSetup(true);
+                }
+                return;
+            }
+
+            _consecutiveNetworkFailures = 0;
+            PublishNetworkStatus(
+                ENetworkAvailabilityState.NoAvailableNode,
+                "无可用节点，请联系客服",
+                "尚未添加可用订阅");
+            return;
+        }
+
+        if (await ConnectionHandler.HasProxyInternetAccess())
+        {
+            _consecutiveNetworkFailures = 0;
+            PublishHealthyNetworkStatus();
+            return;
+        }
+
+        _consecutiveNetworkFailures++;
+        Logging.SaveLog($"Proxy network health check failed. ConsecutiveFailures={_consecutiveNetworkFailures}.");
+        if (_consecutiveNetworkFailures >= AutomaticRepairFailureThreshold)
+        {
+            await RunNetworkSetup(true);
+        }
+    }
+
+    private async Task RunNetworkSetup(bool automatic)
+    {
+        var acquired = automatic
+            ? await _networkRepairSemaphore.WaitAsync(0)
+            : await WaitForNetworkRepairSemaphore();
+        if (!acquired)
+        {
+            return;
+        }
+
+        try
+        {
+            PublishNetworkStatus(
+                ENetworkAvailabilityState.Repairing,
+                "当前网络不可用，正在自动修复",
+                automatic ? "连续检测异常，正在选择可用节点" : "正在执行一键网络设置");
+
+            if (!await ConnectionHandler.HasDirectInternetAccess())
+            {
+                _consecutiveNetworkFailures = 0;
+                PublishNetworkStatus(
+                    ENetworkAvailabilityState.LocalNetworkUnavailable,
+                    "本机网络不可用，请检查 Wi-Fi 或网线");
+                return;
+            }
+
+            var active = await AppManager.Instance.GetProfileItem(_config.IndexId);
+            var currentDelay = active is null ? -1 : await ConnectionHandler.GetRealPingTimeInfo();
+            if (currentDelay is > 0 and <= SlowNetworkDelay)
+            {
+                var proxyConfigured = await StatusBarViewModel.SetListenerType(ESysProxyType.ForcedChange);
+                if (proxyConfigured && await ConnectionHandler.HasProxyInternetAccess())
+                {
+                    _consecutiveNetworkFailures = 0;
+                    PublishHealthyNetworkStatus();
+                    return;
+                }
+            }
+
+            var repaired = false;
+            if (automatic)
+            {
+                var existingIds = await GetSubscriptionIds("");
+                var existingResult = await ProfilesViewModel.TestAndSortSubscriptions(existingIds);
+                if (existingResult.BestProfile is not null)
+                {
+                    var proxyConfigured = await ActivateServer(existingResult.BestProfile.IndexId);
+                    repaired = proxyConfigured && await ConnectionHandler.HasProxyInternetAccess();
+                }
+            }
+
+            if (!repaired)
+            {
+                repaired = await UpdateSubscriptionProcessCore("", false, true, currentDelay);
+                if (repaired)
+                {
+                    repaired = await ConnectionHandler.HasProxyInternetAccess();
+                }
+            }
+
+            if (repaired)
+            {
+                _consecutiveNetworkFailures = 0;
+                _lastNetworkRepairAt = DateTimeOffset.Now;
+                PublishHealthyNetworkStatus();
+            }
+            else
+            {
+                PublishNetworkStatus(
+                    ENetworkAvailabilityState.NoAvailableNode,
+                    "无可用节点，请联系客服",
+                    "订阅已更新，但没有节点能够访问目标网络");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog("Network setup failed", ex);
+            PublishNetworkStatus(
+                ENetworkAvailabilityState.NoAvailableNode,
+                "无可用节点，请联系客服",
+                "自动修复未能完成，请查看日志");
+        }
+        finally
+        {
+            _networkRepairSemaphore.Release();
+        }
+    }
+
+    private async Task<bool> WaitForNetworkRepairSemaphore()
+    {
+        await _networkRepairSemaphore.WaitAsync();
+        return true;
+    }
+
+    private void PublishHealthyNetworkStatus()
+    {
+        if (_lastNetworkRepairAt is { } repairedAt
+            && DateTimeOffset.Now - repairedAt <= RepairedStatusDuration)
+        {
+            PublishNetworkStatus(
+                ENetworkAvailabilityState.Repaired,
+                "当前网络已自动修复",
+                $"修复于 {repairedAt:HH:mm}");
+            return;
+        }
+
+        PublishNetworkStatus(ENetworkAvailabilityState.Available, "当前网络可用");
+    }
+
+    private static void PublishNetworkStatus(
+        ENetworkAvailabilityState state,
+        string message,
+        string detail = "")
+    {
+        AppEvents.NetworkAvailabilityChanged.Publish(new NetworkAvailabilityInfo(state, message, detail));
     }
 
     #endregion Subscription
@@ -681,6 +1072,10 @@ public class MainWindowViewModel : MyReactiveObject
             await Task.Run(async () =>
             {
                 await LoadCore(allResult.MainResult.Context, allResult.PreSocksResult?.Context);
+                if (!CoreManager.Instance.IsRunning)
+                {
+                    throw new InvalidOperationException(ResUI.FailedToRunCore);
+                }
                 await SysProxyHandler.UpdateSysProxy(_config, false);
                 await Task.Delay(1000);
             });
@@ -703,6 +1098,16 @@ public class MainWindowViewModel : MyReactiveObject
             }
 
             ReloadResult(showClashUI);
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog("Core reload failed; clearing the operating-system proxy before recovery.", ex);
+            await SysProxyHandler.UpdateSysProxy(_config, true);
+            PublishNetworkStatus(
+                ENetworkAvailabilityState.Repairing,
+                "当前网络不可用，正在自动修复",
+                "代理核心启动失败，已撤销系统代理并尝试其他节点");
+            _ = Task.Run(async () => await RunNetworkSetup(true));
         }
         finally
         {

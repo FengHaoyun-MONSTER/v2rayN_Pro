@@ -960,6 +960,7 @@ public class ProfilesViewModel : MyReactiveObject
         {
             return;
         }
+        await ProfileExManager.Instance.SaveTo();
         _dicHeaderSort[colName] = !sortAsc;
         await RefreshServers();
     }
@@ -1032,6 +1033,61 @@ public class ProfilesViewModel : MyReactiveObject
         await ServerSpeedtest(ESpeedActionType.Realping, sortAfterComplete: true, testAll: true);
     }
 
+    public async Task<SubscriptionLatencyTestResult> TestAndSortSubscriptions(IReadOnlyCollection<string> subscriptionIds)
+    {
+        var ids = subscriptionIds
+            .Where(id => id.IsNotEmpty())
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var profiles = new List<ProfileItem>();
+        foreach (var id in ids)
+        {
+            var items = await AppManager.Instance.ProfileItems(id) ?? [];
+            profiles.AddRange(items.Where(IsSpeedtestCandidate));
+        }
+
+        Logging.SaveLog($"Subscription real latency workflow started. Subscriptions={ids.Count}, Nodes={profiles.Count}.");
+        if (profiles.Count > 0)
+        {
+            await RunSpeedtestOnce(ESpeedActionType.Realping, profiles, displayCoreLog: false);
+        }
+
+        foreach (var id in ids)
+        {
+            await ConfigHandler.SortServers(_config, id, nameof(EServerColName.DelayVal), true);
+        }
+        await ProfileExManager.Instance.SaveTo();
+
+        var availableSubscriptionIds = new HashSet<string>(StringComparer.Ordinal);
+        var availableProfiles = new List<ProfileItemModel>();
+        foreach (var id in ids)
+        {
+            var models = await AppManager.Instance.ProfileModels(id, "") ?? [];
+            var available = models
+                .Where(item => item.Delay > 0)
+                .OrderBy(item => item.Delay)
+                .ToList();
+            if (available.Count > 0)
+            {
+                availableSubscriptionIds.Add(id);
+                availableProfiles.AddRange(available);
+            }
+        }
+
+        var best = availableProfiles.OrderBy(item => item.Delay).FirstOrDefault();
+        AppEvents.ProfilesRefreshRequested.Publish();
+        Logging.SaveLog(
+            $"Subscription real latency workflow completed. Tested={profiles.Count}, Available={availableProfiles.Count}, Best={best?.IndexId ?? Global.None}, Delay={best?.Delay ?? -1}.");
+        return new SubscriptionLatencyTestResult(ids, profiles.Count, best, availableSubscriptionIds);
+    }
+
+    private static bool IsSpeedtestCandidate(ProfileItem item)
+    {
+        return item.IndexId.IsNotEmpty()
+            && item.ConfigType != EConfigType.Custom
+            && (item.ConfigType.IsComplexType() || item.Port > 0);
+    }
+
     private async Task SortDelayAndSetFirstServer()
     {
         var activeIndexId = _config.IndexId;
@@ -1054,7 +1110,7 @@ public class ProfilesViewModel : MyReactiveObject
         var first = lstModel?.FirstOrDefault(t => t.IndexId.IsNotEmpty()
             && t.ConfigType != EConfigType.Custom
             && (t.ConfigType.IsComplexType() || t.Port > 0)
-            && t.Delay >= 0);
+            && t.Delay > 0);
 
         if (first?.IndexId.IsNotEmpty() == true)
         {
@@ -1328,6 +1384,11 @@ public class ProfilesViewModel : MyReactiveObject
     public async Task AddSubscription()
     {
         await EditSubAsync(true);
+    }
+
+    public async Task EditCurrentSubscription()
+    {
+        await EditSubAsync(false);
     }
 
     private async Task EditSubAsync(bool blNew)

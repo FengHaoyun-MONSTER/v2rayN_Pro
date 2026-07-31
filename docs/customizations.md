@@ -5,6 +5,10 @@
 | 功能 | 主要位置 | 升级风险 |
 | --- | --- | --- |
 | 新增订阅后的自动更新、真延迟测试、排序和激活 | `ProfilesViewModel.cs`、`StatusBarViewModel.cs` | 高 |
+| 手动/定时订阅更新后的逐分组真延迟与升序排序 | `MainWindowViewModel.cs`、`ProfilesViewModel.cs` | 高 |
+| 首页五色网络状态与一键设置网络 | `SubscriptionInfoViewModel.cs`、Windows SubscriptionInfo 视图 | 高 |
+| 连续失败自动换点、直连更新和 Google 204 验证 | `MainWindowViewModel.cs`、`ConnectionHandler.cs` | 高 |
+| 每订阅最后可用快照与失败恢复 | `SubscriptionSnapshotHandler.cs` | 高 |
 | 首次启动自动打开新增订阅窗口 | 主窗口及 Profiles 事件链 | 高 |
 | 延迟升序排序，失败节点排在最后 | `ProfilesViewModel.cs` | 中 |
 | 自动流程中的无效节点清理范围限制 | `ProfilesViewModel.cs` | 高 |
@@ -26,6 +30,9 @@
 - `v2rayN/ServiceLib/ViewModels/StatusBarViewModel.cs`
 - `v2rayN/ServiceLib/ViewModels/SubscriptionInfoViewModel.cs`
 - `v2rayN/ServiceLib/Manager/CoreManager.cs`
+- `v2rayN/ServiceLib/Manager/TaskManager.cs`
+- `v2rayN/ServiceLib/Handler/SubscriptionSnapshotHandler.cs`
+- `v2rayN/ServiceLib/Handler/ConnectionHandler.cs`
 - `v2rayN/ServiceLib/Manager/CoreAdminManager.cs`
 - `v2rayN/v2rayN/Views/MainWindow.xaml`
 - `v2rayN/v2rayN.Desktop/Views/MainWindow.axaml`

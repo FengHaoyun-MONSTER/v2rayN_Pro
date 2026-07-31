@@ -23,7 +23,9 @@
             VerticalAlignment="Top">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="16" />
+                <RowDefinition Height="12" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="12" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
@@ -117,8 +119,61 @@
                 </Grid>
             </Grid>
 
-            <Grid
+            <Border
                 Grid.Row="2"
+                x:Name="networkStatusBorder"
+                MinHeight="64"
+                Padding="18,10"
+                CornerRadius="6"
+                Opacity="0.92">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <materialDesign:PackIcon
+                        Width="22"
+                        Height="22"
+                        Margin="0,0,12,0"
+                        VerticalAlignment="Center"
+                        Foreground="White"
+                        Kind="WifiCheck" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock
+                            x:Name="txtNetworkStatus"
+                            FontSize="15"
+                            FontWeight="SemiBold"
+                            Foreground="White" />
+                        <TextBlock
+                            x:Name="txtNetworkStatusDetail"
+                            Margin="0,3,0,0"
+                            FontSize="11"
+                            Foreground="White"
+                            Opacity="0.82" />
+                    </StackPanel>
+                    <Button
+                        x:Name="btnContactSupport"
+                        Grid.Column="2"
+                        MinWidth="88"
+                        Height="34"
+                        Margin="10,0,0,0"
+                        Content="联系客服"
+                        Style="{StaticResource DefButton}" />
+                    <Button
+                        x:Name="btnOneClickNetworkSetup"
+                        Grid.Column="3"
+                        MinWidth="126"
+                        Height="34"
+                        Margin="10,0,0,0"
+                        Content="一键设置网络"
+                        Style="{StaticResource DefButton}" />
+                </Grid>
+            </Border>
+
+            <Grid
+                Grid.Row="4"
                 MinHeight="132"
                 MaxHeight="240">
                 <Border

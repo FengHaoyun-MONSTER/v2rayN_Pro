@@ -6,11 +6,16 @@ public class TaskManager
     public static TaskManager Instance => _instance.Value;
     private Config _config;
     private Func<bool, string, Task>? _updateFunc;
+    private Func<string, bool, Task>? _subscriptionUpdateFunc;
 
-    public void RegUpdateTask(Config config, Func<bool, string, Task> updateFunc)
+    public void RegUpdateTask(
+        Config config,
+        Func<bool, string, Task> updateFunc,
+        Func<string, bool, Task>? subscriptionUpdateFunc = null)
     {
         _config = config;
         _updateFunc = updateFunc;
+        _subscriptionUpdateFunc = subscriptionUpdateFunc;
 
         Task.Run(ScheduledTasks);
     }
@@ -103,6 +108,13 @@ public class TaskManager
 
         foreach (var item in lstSubs)
         {
+            if (_subscriptionUpdateFunc is not null)
+            {
+                await _subscriptionUpdateFunc(item.Id, true);
+                await Task.Delay(1000);
+                continue;
+            }
+
             var success = await SubscriptionHandler.UpdateProcess(_config, item.Id, true, async (success, msg) =>
             {
                 await _updateFunc?.Invoke(success, msg);

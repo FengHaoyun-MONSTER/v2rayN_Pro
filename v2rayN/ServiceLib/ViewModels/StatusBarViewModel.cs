@@ -372,13 +372,13 @@ public class StatusBarViewModel : MyReactiveObject
 
     #region System proxy and Routings
 
-    private async Task SetListenerType(ESysProxyType type)
+    public async Task<bool> SetListenerType(ESysProxyType type)
     {
         var previousType = _config.SystemProxyItem.SysProxyType;
         if (!await EnsureMacOSSystemProxyAuthorization(type))
         {
             SystemProxySelected = (int)previousType;
-            return;
+            return false;
         }
 
         if (_config.SystemProxyItem.SysProxyType == type)
@@ -387,8 +387,9 @@ public class StatusBarViewModel : MyReactiveObject
             if (!await ChangeSystemProxyAsync(type, true))
             {
                 NoticeManager.Instance.Enqueue("macOS system proxy update failed. Check guiLogs.");
+                return false;
             }
-            return;
+            return true;
         }
         _config.SystemProxyItem.SysProxyType = type;
         if (!await ChangeSystemProxyAsync(type, true))
@@ -397,12 +398,13 @@ public class StatusBarViewModel : MyReactiveObject
             SystemProxySelected = (int)previousType;
             await ApplySystemProxyState(previousType, true);
             NoticeManager.Instance.Enqueue("macOS system proxy update failed. Check guiLogs.");
-            return;
+            return false;
         }
         NoticeManager.Instance.SendMessageEx($"{ResUI.TipChangeSystemProxy} - {_config.SystemProxyItem.SysProxyType}");
 
         SystemProxySelected = (int)_config.SystemProxyItem.SysProxyType;
         await ConfigHandler.SaveConfig(_config);
+        return true;
     }
 
     public async Task<bool> ChangeSystemProxyAsync(ESysProxyType type, bool blChange)

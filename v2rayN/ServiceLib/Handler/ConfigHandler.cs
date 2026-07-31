@@ -1002,9 +1002,8 @@ public static class ConfigHandler
                 EServerColName.Port => lstProfile.OrderBy(t => t.Port).ToList(),
                 EServerColName.Network => lstProfile.OrderBy(t => t.Network).ToList(),
                 EServerColName.StreamSecurity => lstProfile.OrderBy(t => t.StreamSecurity).ToList(),
-                EServerColName.DelayVal => lstProfile
-                    .OrderBy(t => t.Delay == -1 ? 1 : 0)
-                    .ThenBy(t => t.Delay)
+                EServerColName.DelayVal => LatencySortHelper
+                    .OrderAscending(lstProfile, item => item.Delay)
                     .ToList(),
                 EServerColName.SpeedVal => lstProfile.OrderBy(t => t.Speed).ToList(),
                 EServerColName.IpInfo => lstProfile.OrderBy(t => t.IpInfo).ToList(),

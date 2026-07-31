@@ -32,7 +32,24 @@ public class SubscriptionInfoViewModel : MyReactiveObject
     [Reactive]
     public bool HasSupportUrl { get; set; }
 
+    [Reactive]
+    public string NetworkStatusText { get; set; } = "正在检查当前网络";
+
+    [Reactive]
+    public string NetworkStatusDetail { get; set; } = string.Empty;
+
+    [Reactive]
+    public string NetworkStatusColor { get; set; } = "#F9A825";
+
+    [Reactive]
+    public bool IsNetworkRepairing { get; set; }
+
+    [Reactive]
+    public bool CanContactSupport { get; set; }
+
     public ReactiveCommand<Unit, Unit> OpenSupportCmd { get; }
+    public ReactiveCommand<Unit, Unit> OneClickNetworkSetupCmd { get; }
+    public ReactiveCommand<Unit, Unit> ContactSupportCmd { get; }
 
     public SubscriptionInfoViewModel()
     {
@@ -40,6 +57,20 @@ public class SubscriptionInfoViewModel : MyReactiveObject
         OpenSupportCmd = ReactiveCommand.Create(
             () => ProcUtils.ProcessStart(SupportUrl),
             this.WhenAnyValue(x => x.HasSupportUrl));
+        OneClickNetworkSetupCmd = ReactiveCommand.Create(
+            () => AppEvents.OneClickNetworkSetupRequested.Publish(),
+            this.WhenAnyValue(x => x.IsNetworkRepairing, repairing => !repairing));
+        ContactSupportCmd = ReactiveCommand.Create(() =>
+        {
+            if (HasSupportUrl)
+            {
+                ProcUtils.ProcessStart(SupportUrl);
+            }
+            else
+            {
+                AppEvents.EditCurrentSubscriptionRequested.Publish();
+            }
+        });
 
         AppEvents.SubscriptionSelectionChanged
             .AsObservable()
@@ -50,8 +81,29 @@ public class SubscriptionInfoViewModel : MyReactiveObject
             .AsObservable()
             .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(async _ => await Refresh(_config.SubIndexId));
+        AppEvents.NetworkAvailabilityChanged
+            .AsObservable()
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
+            .Subscribe(ApplyNetworkStatus);
 
         _ = Refresh(_config.SubIndexId);
+    }
+
+    private void ApplyNetworkStatus(NetworkAvailabilityInfo info)
+    {
+        NetworkStatusText = info.Message;
+        NetworkStatusDetail = info.Detail;
+        IsNetworkRepairing = info.State is ENetworkAvailabilityState.Checking or ENetworkAvailabilityState.Repairing;
+        CanContactSupport = info.State == ENetworkAvailabilityState.NoAvailableNode;
+        NetworkStatusColor = info.State switch
+        {
+            ENetworkAvailabilityState.Available => "#2E7D32",
+            ENetworkAvailabilityState.Repairing or ENetworkAvailabilityState.Checking => "#F9A825",
+            ENetworkAvailabilityState.Repaired => "#1976D2",
+            ENetworkAvailabilityState.NoAvailableNode => "#C62828",
+            ENetworkAvailabilityState.LocalNetworkUnavailable => "#616161",
+            _ => "#616161"
+        };
     }
 
     private async Task Refresh(string? subId)
