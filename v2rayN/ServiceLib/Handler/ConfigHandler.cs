@@ -92,7 +92,7 @@ public static class ConfigHandler
             EnableTun = false,
             Mtu = 9000,
             IcmpRouting = Global.TunIcmpRoutingPolicies.First(),
-            EnableLegacyProtect = false,
+            EnableLegacyProtect = true,
         };
         config.GuiItem ??= new();
         if (!Global.RootCertProviders.Contains(config.GuiItem.RootCertProvider))
@@ -115,10 +115,12 @@ public static class ConfigHandler
         config.ConstItem ??= new ConstItem();
 
         config.SimpleDNSItem ??= InitBuiltinSimpleDNS();
+        config.SimpleDNSItem.FakeIPRange ??= Global.FakeIPRanges.FirstOrDefault();
         config.SimpleDNSItem.GlobalFakeIp ??= true;
         config.SimpleDNSItem.BootstrapDNS ??= Global.DomainPureIPDNSAddress.FirstOrDefault();
         config.SimpleDNSItem.ServeStale ??= false;
         config.SimpleDNSItem.ParallelQuery ??= false;
+        config.SimpleDNSItem.EnableHappyEyeballs ??= false;
 
         config.SpeedTestItem ??= new();
         if (config.SpeedTestItem.SpeedTestTimeout < 10)
@@ -168,10 +170,24 @@ public static class ConfigHandler
         config.Fragment4RayItem ??= new()
         {
             Packets = "tlshello",
-            Length = "50-100",
-            Interval = "10-20",
-            MaxSplit = "0"
         };
+        config.Fragment4RayItem.MaxSplit ??= "0";
+
+        config.HappyEyeballs4RayItem ??= new()
+        {
+            TryDelayMs = 250,
+            PrioritizeIPv6 = false,
+            Interleave = 1,
+            MaxConcurrentTry = 4,
+        };
+        if ((config.Fragment4RayItem.Lengths ?? []).Count == 0)
+        {
+            config.Fragment4RayItem.Lengths = [config.Fragment4RayItem.Length ?? "50-100"];
+        }
+        if ((config.Fragment4RayItem.Delays ?? []).Count == 0)
+        {
+            config.Fragment4RayItem.Delays = [config.Fragment4RayItem.Interval ?? "10-20"];
+        }
         config.GlobalHotkeys ??= [];
 
         if (config.SystemProxyItem.SystemProxyExceptions.IsNullOrEmpty())
@@ -1515,7 +1531,8 @@ public static class ConfigHandler
         else if (node.ConfigType == EConfigType.Custom
             && node.PreSocksPort is > 0 and <= 65535)
         {
-            var preCoreType = config.TunModeItem.EnableTun ? ECoreType.sing_box : ECoreType.Xray;
+            var customPreCoreType = AppManager.Instance.GetCoreType(null, EConfigType.Custom);
+            var preCoreType = (enableLegacyProtect && config.TunModeItem.EnableTun) ? ECoreType.sing_box : customPreCoreType;
             itemSocks = new ProfileItem()
             {
                 CoreType = preCoreType,

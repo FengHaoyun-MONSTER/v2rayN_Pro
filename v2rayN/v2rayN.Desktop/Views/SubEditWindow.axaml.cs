@@ -7,16 +7,9 @@ public partial class SubEditWindow : WindowBase<SubEditViewModel>
     public SubEditWindow()
     {
         InitializeComponent();
-    }
-
-    public SubEditWindow(SubItem subItem)
-    {
-        InitializeComponent();
 
         Loaded += Window_Loaded;
         btnCancel.Click += (s, e) => Close();
-
-        ViewModel = new SubEditViewModel(subItem, UpdateViewHandler);
 
         cmbConvertTarget.ItemsSource = Global.SubConvertTargets;
 
@@ -36,19 +29,10 @@ public partial class SubEditWindow : WindowBase<SubEditViewModel>
             this.Bind(ViewModel, vm => vm.SelectedSource.PreSocksPort, v => v.txtPreSocksPort.Text).DisposeWith(disposables);
             this.Bind(ViewModel, vm => vm.SelectedSource.Memo, v => v.txtMemo.Text).DisposeWith(disposables);
 
+            this.BindCommand(ViewModel, vm => vm.SelectPrevProfileCmd, v => v.btnSelectPrevProfile).DisposeWith(disposables);
+            this.BindCommand(ViewModel, vm => vm.SelectNextProfileCmd, v => v.btnSelectNextProfile).DisposeWith(disposables);
             this.BindCommand(ViewModel, vm => vm.SaveCmd, v => v.btnSave).DisposeWith(disposables);
         });
-    }
-
-    private async Task<bool> UpdateViewHandler(EViewAction action, object? obj)
-    {
-        switch (action)
-        {
-            case EViewAction.CloseWindow:
-                Close(true);
-                break;
-        }
-        return await Task.FromResult(true);
     }
 
     private void Window_Loaded(object? sender, RoutedEventArgs e)
@@ -56,49 +40,12 @@ public partial class SubEditWindow : WindowBase<SubEditViewModel>
         txtUrl.Focus();
     }
 
-    private void TogAdvanced_Checked(object? sender, RoutedEventArgs e)
+    private void TogAdvanced_IsCheckedChanged(object? sender, RoutedEventArgs e)
     {
-        pnlAdvanced.IsVisible = true;
-        togAdvanced.Content = "∧";
-        ToolTip.SetTip(togAdvanced, "折叠更多设置");
-        Height = 650;
-    }
-
-    private void TogAdvanced_Unchecked(object? sender, RoutedEventArgs e)
-    {
-        pnlAdvanced.IsVisible = false;
-        togAdvanced.Content = "∨";
-        ToolTip.SetTip(togAdvanced, "展开更多设置");
-        Height = 250;
-    }
-
-    private async void BtnSelectPrevProfile_Click(object? sender, RoutedEventArgs e)
-    {
-        var selectWindow = new ProfilesSelectWindow();
-        selectWindow.SetConfigTypeFilter([EConfigType.Custom], exclude: true);
-        var result = await selectWindow.ShowDialog<bool?>(this);
-        if (result == true)
-        {
-            var profile = await selectWindow.ProfileItem;
-            if (profile != null)
-            {
-                txtPrevProfile.Text = profile.Remarks;
-            }
-        }
-    }
-
-    private async void BtnSelectNextProfile_Click(object? sender, RoutedEventArgs e)
-    {
-        var selectWindow = new ProfilesSelectWindow();
-        selectWindow.SetConfigTypeFilter([EConfigType.Custom], exclude: true);
-        var result = await selectWindow.ShowDialog<bool?>(this);
-        if (result == true)
-        {
-            var profile = await selectWindow.ProfileItem;
-            if (profile != null)
-            {
-                txtNextProfile.Text = profile.Remarks;
-            }
-        }
+        var expanded = togAdvanced.IsChecked == true;
+        pnlAdvanced.IsVisible = expanded;
+        togAdvanced.Content = expanded ? "∧" : "∨";
+        ToolTip.SetTip(togAdvanced, expanded ? "折叠更多设置" : "展开更多设置");
+        Height = expanded ? 650 : 250;
     }
 }

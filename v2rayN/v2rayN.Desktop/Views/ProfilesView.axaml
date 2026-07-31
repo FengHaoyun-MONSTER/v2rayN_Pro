@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:conv="using:v2rayN.Desktop.Converters"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:dd="clr-namespace:v2rayN.Desktop.DesignData"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:models="clr-namespace:ServiceLib.Models.Entities;assembly=ServiceLib"
     xmlns:resx="clr-namespace:ServiceLib.Resx;assembly=ServiceLib"
@@ -13,6 +14,7 @@
     d:DesignWidth="800"
     x:DataType="vms:ProfilesViewModel"
     Background="Transparent"
+    Design.DataContext="{x:Static dd:DesignData.Profiles}"
     mc:Ignorable="d">
     <UserControl.Resources>
         <conv:DelayColorConverter x:Key="DelayColorConverter" />
@@ -75,12 +77,12 @@
                     Content="添加订阅"
                     ToolTip.Tip="添加订阅" />
 
-                <TextBox
-                    x:Name="txtServerFilter"
-                    Width="200"
-                    Margin="{StaticResource MarginLr4}"
-                    VerticalContentAlignment="Center"
-                    Watermark="{x:Static resx:ResUI.MsgServerTitle}" />
+                    <TextBox
+                        x:Name="txtServerFilter"
+                        Width="200"
+                        Margin="{StaticResource MarginLr4}"
+                        VerticalContentAlignment="Center"
+                        PlaceholderText="{x:Static resx:ResUI.MsgServerTitle}" />
 
                 <Button
                     x:Name="btnAutofitColumnWidth"
