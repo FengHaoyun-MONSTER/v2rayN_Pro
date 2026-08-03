@@ -292,11 +292,11 @@
                     Style="{StaticResource MyOutlinedTextBox}"
                     Visibility="{Binding ElementName=togAdvanced, Path=IsChecked, Converter={StaticResource BoolToVisConverter}}" />
                 <Button
+                    x:Name="btnSelectPrevProfile"
                     Grid.Row="9"
                     Grid.Column="2"
                     Margin="{StaticResource Margin4}"
                     VerticalAlignment="Center"
-                    Click="BtnSelectPrevProfile_Click"
                     Content="{x:Static resx:ResUI.TbSelectProfile}"
                     Style="{StaticResource DefButton}"
                     Visibility="{Binding ElementName=togAdvanced, Path=IsChecked, Converter={StaticResource BoolToVisConverter}}" />
@@ -320,11 +320,11 @@
                     Style="{StaticResource MyOutlinedTextBox}"
                     Visibility="{Binding ElementName=togAdvanced, Path=IsChecked, Converter={StaticResource BoolToVisConverter}}" />
                 <Button
+                    x:Name="btnSelectNextProfile"
                     Grid.Row="10"
                     Grid.Column="2"
                     Margin="{StaticResource Margin4}"
                     VerticalAlignment="Center"
-                    Click="BtnSelectNextProfile_Click"
                     Content="{x:Static resx:ResUI.TbSelectProfile}"
                     Style="{StaticResource DefButton}"
                     Visibility="{Binding ElementName=togAdvanced, Path=IsChecked, Converter={StaticResource BoolToVisConverter}}" />

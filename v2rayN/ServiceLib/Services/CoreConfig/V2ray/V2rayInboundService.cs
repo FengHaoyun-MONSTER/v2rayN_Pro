@@ -63,11 +63,17 @@ public partial class CoreConfigV2rayService
                     new Inbounds4Ray();
                 tunInbound.settings.name = context.IsMacOS ? $"utun{new Random().Next(99)}" : "xray_tun";
                 tunInbound.settings.MTU = _config.TunModeItem.Mtu;
-                if (!_config.TunModeItem.EnableIPv6Address)
+
+                var address = _config.TunModeItem.IPv4Address.NullIfEmpty() ?? Global.TunIPv4Address.First();
+                tunInbound.settings.gateway = [address];
+                tunInbound.settings.autoSystemRoutingTable = ["0.0.0.0/0"];
+                if (_config.TunModeItem.EnableIPv6Address == true)
                 {
-                    tunInbound.settings.gateway = ["172.18.0.1/30"];
-                    tunInbound.settings.autoSystemRoutingTable = ["0.0.0.0/0"];
+                    var address6 = _config.TunModeItem.IPv6Address.NullIfEmpty() ?? Global.TunIPv6Address.First();
+                    tunInbound.settings.gateway.Add(address6);
+                    tunInbound.settings.autoSystemRoutingTable.Add("::/0");
                 }
+           
                 var bindInterface = _config.CoreBasicItem.BindInterface?.TrimEx();
                 if (!bindInterface.IsNullOrEmpty())
                 {
@@ -151,6 +157,16 @@ public partial class CoreConfigV2rayService
         inbound.sniffing.enabled = inItem.SniffingEnabled;
         inbound.sniffing.destOverride = inItem.DestOverride;
         inbound.sniffing.routeOnly = inItem.RouteOnly;
+
+        if (_config.SimpleDNSItem.FakeIP == true)
+        {
+            // Ensure destOverride contains "fakedns" if FakeIP is enabled
+            inbound.sniffing.destOverride ??= [];
+            if (!inbound.sniffing.destOverride.Contains("fakedns"))
+            {
+                inbound.sniffing.destOverride.Add("fakedns");
+            }
+        }
 
         return inbound;
     }

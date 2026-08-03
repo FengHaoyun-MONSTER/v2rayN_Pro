@@ -3,6 +3,13 @@ namespace ServiceLib.Handler;
 public static class ConnectionHandler
 {
     private static readonly string _tag = "ConnectionHandler";
+    private static readonly string[] _directConnectivityUrls =
+    [
+        "https://www.msftconnecttest.com/connecttest.txt",
+        "https://cp.cloudflare.com/generate_204",
+        "http://connect.rom.miui.com/generate_204"
+    ];
+    private const string ProxyConnectivityUrl = "https://www.google.com/generate_204";
 
     /// <summary>
     /// Runs ping and IP checks and returns a formatted result string.
@@ -29,7 +36,7 @@ public static class ConnectionHandler
     /// <summary>
     /// Measures real ping time using configured test URL.
     /// </summary>
-    private static async Task<int> GetRealPingTimeInfo()
+    public static async Task<int> GetRealPingTimeInfo()
     {
         var responseTime = -1;
         try
@@ -52,6 +59,72 @@ public static class ConnectionHandler
             return -1;
         }
         return responseTime;
+    }
+
+    public static async Task<bool> HasDirectInternetAccess()
+    {
+        if (!NetworkInterface.GetIsNetworkAvailable())
+        {
+            return false;
+        }
+
+        using var client = new HttpClient(new SocketsHttpHandler
+        {
+            UseProxy = false,
+            ConnectTimeout = TimeSpan.FromSeconds(3),
+            AutomaticDecompression = DecompressionMethods.All
+        })
+        {
+            Timeout = TimeSpan.FromSeconds(5)
+        };
+
+        foreach (var url in _directConnectivityUrls)
+        {
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                using var response = await client.SendAsync(
+                    request,
+                    HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+                if ((int)response.StatusCode is >= 200 and < 400)
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+                // Try the next independent connectivity endpoint.
+            }
+        }
+
+        return false;
+    }
+
+    public static async Task<bool> HasProxyInternetAccess()
+    {
+        try
+        {
+            var webProxy = await GetWebProxy();
+            using var client = new HttpClient(new SocketsHttpHandler
+            {
+                Proxy = webProxy,
+                UseProxy = true,
+                ConnectTimeout = TimeSpan.FromSeconds(3),
+                AutomaticDecompression = DecompressionMethods.All
+            })
+            {
+                Timeout = TimeSpan.FromSeconds(8)
+            };
+            using var request = new HttpRequestMessage(HttpMethod.Get, ProxyConnectivityUrl);
+            using var response = await client.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+            return response.StatusCode == HttpStatusCode.NoContent;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     /// <summary>

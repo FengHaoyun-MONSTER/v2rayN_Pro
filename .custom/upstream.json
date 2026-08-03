@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/2dust/v2rayN.git",
   "upstreamRemote": "upstream",
-  "upstreamRef": "7.23.2",
-  "upstreamCommit": "a236fab27c2ecaec18321bc459175c4450f9c87e",
+  "upstreamRef": "7.24.4",
+  "upstreamCommit": "635a04d74c3cb6891e144756234d50e147cf175a",
   "upstreamPatches": [
     "74ab7ad0",
     "ca9978b6",

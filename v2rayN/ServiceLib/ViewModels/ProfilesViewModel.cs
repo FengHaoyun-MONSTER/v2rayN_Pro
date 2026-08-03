@@ -2,6 +2,17 @@ namespace ServiceLib.ViewModels;
 
 public class ProfilesViewModel : MyReactiveObject
 {
+    public Interaction<string, bool> ShowYesNoInteraction { get; } = new();
+    public Interaction<ProfileItem, bool> SaveFileDialogInteraction { get; } = new();
+    public Interaction<string, Unit> SetClipboardDataInteraction { get; } = new();
+    public Interaction<Unit, Unit> ProfilesFocusInteraction { get; } = new();
+    public Interaction<string, Unit> ShareServerInteraction { get; } = new();
+    public Interaction<Unit, Unit> DispatcherRefreshServersBizInteraction { get; } = new();
+    public Interaction<Unit, Unit> AdjustMainLvColWidthInteraction { get; } = new();
+
+    public EventChannel<Unit> ReloadRequested { get; } = new();
+    public EventChannel<Unit> RefreshServersRequested { get; } = new();
+
     #region private prop
 
     private List<ProfileItem> _lstProfile;
@@ -102,10 +113,9 @@ public class ProfilesViewModel : MyReactiveObject
 
     #region Init
 
-    public ProfilesViewModel(Func<EViewAction, object?, Task<bool>>? updateView)
+    public ProfilesViewModel()
     {
         _config = AppManager.Instance.Config;
-        _updateView = updateView;
 
         #region WhenAnyValue && ReactiveCommand
 
@@ -285,16 +295,10 @@ public class ProfilesViewModel : MyReactiveObject
             .AsObservable()
             .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(async _ => await AutoRealPingAndSort());
-
         AppEvents.DispatcherStatisticsRequested
             .AsObservable()
             .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(async result => await UpdateStatistics(result));
-
-        AppEvents.SetDefaultServerRequested
-            .AsObservable()
-            .ObserveOn(RxSchedulers.MainThreadScheduler)
-            .Subscribe(async indexId => await SetDefaultServer(indexId));
 
         #endregion AppEvents
 
@@ -317,7 +321,7 @@ public class ProfilesViewModel : MyReactiveObject
 
     private void Reload()
     {
-        AppEvents.ReloadRequested.Publish();
+        ReloadRequested.Publish();
     }
 
     public async Task SetSpeedTestResult(SpeedTestResult result)
@@ -392,7 +396,13 @@ public class ProfilesViewModel : MyReactiveObject
 
         await RefreshServers();
 
-        await _updateView?.Invoke(EViewAction.ProfilesFocus, null);
+        try
+        {
+            await ProfilesFocusInteraction.Handle(Unit.Default);
+        }
+        catch (UnhandledInteractionException<Unit, Unit>)
+        {
+        }
     }
 
     private async Task ServerFilterChanged(bool c)
@@ -410,19 +420,21 @@ public class ProfilesViewModel : MyReactiveObject
 
     public async Task RefreshServers()
     {
-        AppEvents.ProfilesRefreshRequested.Publish();
+        RefreshServersRequested.Publish();
 
-        await Task.Delay(200);
+        // await Task.Delay(200);
+
+        await Task.CompletedTask;
     }
 
-    private async Task RefreshServersBiz()
+    public async Task RefreshServersBiz()
     {
         var lstModel = await GetProfileItemsEx(_config.SubIndexId, _serverFilter);
         _lstProfile = JsonUtils.Deserialize<List<ProfileItem>>(JsonUtils.Serialize(lstModel)) ?? [];
 
         ProfileItems.Clear();
-        ProfileItems.AddRange(lstModel);
-        if (lstModel.Count > 0)
+        ProfileItems.AddRange(lstModel ?? []);
+        if (lstModel?.Count > 0)
         {
             ProfileItemModel? selected = null;
             if (!_pendingSelectIndexId.IsNullOrEmpty())
@@ -434,10 +446,16 @@ public class ProfilesViewModel : MyReactiveObject
             SelectedProfile = selected ?? lstModel.First();
         }
 
-        await _updateView?.Invoke(EViewAction.DispatcherRefreshServersBiz, null);
+        try
+        {
+            await DispatcherRefreshServersBizInteraction.Handle(Unit.Default);
+        }
+        catch (UnhandledInteractionException<Unit, Unit>)
+        {
+        }
     }
 
-    private async Task RefreshSubscriptions()
+    public async Task RefreshSubscriptions()
     {
         var subItems = await AppManager.Instance.SubItems();
         subItems.Insert(0, new SubItem { Remarks = ResUI.AllGroupServers });
@@ -474,6 +492,11 @@ public class ProfilesViewModel : MyReactiveObject
     {
         const double bytesPerGigabyte = 1024d * 1024d * 1024d;
         return $"{bytes / bytesPerGigabyte:#,##0.##} GB";
+    }
+
+    public async Task AdjustMainLvColWidth()
+    {
+        await AdjustMainLvColWidthInteraction.Handle(Unit.Default);
     }
 
     private async Task<List<ProfileItemModel>?> GetProfileItemsEx(string subid, string filter)
@@ -559,15 +582,18 @@ public class ProfilesViewModel : MyReactiveObject
         bool? ret = false;
         if (eConfigType == EConfigType.Custom)
         {
-            ret = await _updateView?.Invoke(EViewAction.AddServer2Window, item);
+            var addServer2ViewModel = new AddServer2ViewModel(item);
+            ret = await AppManager.Instance.WindowDialog.ShowDialogAsync(addServer2ViewModel);
         }
         else if (eConfigType.IsGroupType())
         {
-            ret = await _updateView?.Invoke(EViewAction.AddGroupServerWindow, item);
+            var addGroupServerViewModel = new AddGroupServerViewModel(item);
+            ret = await AppManager.Instance.WindowDialog.ShowDialogAsync(addGroupServerViewModel);
         }
         else
         {
-            ret = await _updateView?.Invoke(EViewAction.AddServerWindow, item);
+            var addServerViewModel = new AddServerViewModel(item);
+            ret = await AppManager.Instance.WindowDialog.ShowDialogAsync(addServerViewModel);
         }
         if (ret == true)
         {
@@ -586,7 +612,7 @@ public class ProfilesViewModel : MyReactiveObject
         {
             return;
         }
-        if (await _updateView?.Invoke(EViewAction.ShowYesNo, null) == false)
+        if (await ShowYesNoInteraction.Handle(ResUI.RemoveServer) == false)
         {
             return;
         }
@@ -607,7 +633,7 @@ public class ProfilesViewModel : MyReactiveObject
 
     private async Task RemoveDuplicateServer()
     {
-        if (await _updateView?.Invoke(EViewAction.ShowYesNo, null) == false)
+        if (await ShowYesNoInteraction.Handle(ResUI.RemoveServer) == false)
         {
             return;
         }
@@ -644,7 +670,7 @@ public class ProfilesViewModel : MyReactiveObject
         await SetDefaultServer(SelectedProfile.IndexId);
     }
 
-    private async Task SetDefaultServer(string? indexId)
+    public async Task SetDefaultServer(string? indexId)
     {
         if (indexId.IsNullOrEmpty())
         {
@@ -682,7 +708,7 @@ public class ProfilesViewModel : MyReactiveObject
             return;
         }
 
-        await _updateView?.Invoke(EViewAction.ShareServer, url);
+        await ShareServerInteraction.Handle(url);
     }
 
     private async Task GenGroupAllServer()
@@ -934,6 +960,7 @@ public class ProfilesViewModel : MyReactiveObject
         {
             return;
         }
+        await ProfileExManager.Instance.SaveTo();
         _dicHeaderSort[colName] = !sortAsc;
         await RefreshServers();
     }
@@ -1006,6 +1033,61 @@ public class ProfilesViewModel : MyReactiveObject
         await ServerSpeedtest(ESpeedActionType.Realping, sortAfterComplete: true, testAll: true);
     }
 
+    public async Task<SubscriptionLatencyTestResult> TestAndSortSubscriptions(IReadOnlyCollection<string> subscriptionIds)
+    {
+        var ids = subscriptionIds
+            .Where(id => id.IsNotEmpty())
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var profiles = new List<ProfileItem>();
+        foreach (var id in ids)
+        {
+            var items = await AppManager.Instance.ProfileItems(id) ?? [];
+            profiles.AddRange(items.Where(IsSpeedtestCandidate));
+        }
+
+        Logging.SaveLog($"Subscription real latency workflow started. Subscriptions={ids.Count}, Nodes={profiles.Count}.");
+        if (profiles.Count > 0)
+        {
+            await RunSpeedtestOnce(ESpeedActionType.Realping, profiles, displayCoreLog: false);
+        }
+
+        foreach (var id in ids)
+        {
+            await ConfigHandler.SortServers(_config, id, nameof(EServerColName.DelayVal), true);
+        }
+        await ProfileExManager.Instance.SaveTo();
+
+        var availableSubscriptionIds = new HashSet<string>(StringComparer.Ordinal);
+        var availableProfiles = new List<ProfileItemModel>();
+        foreach (var id in ids)
+        {
+            var models = await AppManager.Instance.ProfileModels(id, "") ?? [];
+            var available = models
+                .Where(item => item.Delay > 0)
+                .OrderBy(item => item.Delay)
+                .ToList();
+            if (available.Count > 0)
+            {
+                availableSubscriptionIds.Add(id);
+                availableProfiles.AddRange(available);
+            }
+        }
+
+        var best = availableProfiles.OrderBy(item => item.Delay).FirstOrDefault();
+        AppEvents.ProfilesRefreshRequested.Publish();
+        Logging.SaveLog(
+            $"Subscription real latency workflow completed. Tested={profiles.Count}, Available={availableProfiles.Count}, Best={best?.IndexId ?? Global.None}, Delay={best?.Delay ?? -1}.");
+        return new SubscriptionLatencyTestResult(ids, profiles.Count, best, availableSubscriptionIds);
+    }
+
+    private static bool IsSpeedtestCandidate(ProfileItem item)
+    {
+        return item.IndexId.IsNotEmpty()
+            && item.ConfigType != EConfigType.Custom
+            && (item.ConfigType.IsComplexType() || item.Port > 0);
+    }
+
     private async Task SortDelayAndSetFirstServer()
     {
         var activeIndexId = _config.IndexId;
@@ -1028,7 +1110,7 @@ public class ProfilesViewModel : MyReactiveObject
         var first = lstModel?.FirstOrDefault(t => t.IndexId.IsNotEmpty()
             && t.ConfigType != EConfigType.Custom
             && (t.ConfigType.IsComplexType() || t.Port > 0)
-            && t.Delay >= 0);
+            && t.Delay > 0);
 
         if (first?.IndexId.IsNotEmpty() == true)
         {
@@ -1204,13 +1286,13 @@ public class ProfilesViewModel : MyReactiveObject
             }
             else
             {
-                await _updateView?.Invoke(EViewAction.SetClipboardData, result.Data);
+                await SetClipboardDataInteraction.Handle((string)result.Data);
                 NoticeManager.Instance.SendMessage(ResUI.OperationSuccess);
             }
         }
         else
         {
-            await _updateView?.Invoke(EViewAction.SaveFileDialog, item);
+            await SaveFileDialogInteraction.Handle(item);
         }
     }
 
@@ -1259,11 +1341,11 @@ public class ProfilesViewModel : MyReactiveObject
         {
             if (blEncode)
             {
-                await _updateView?.Invoke(EViewAction.SetClipboardData, Utils.Base64Encode(sb.ToString()));
+                await SetClipboardDataInteraction.Handle(Utils.Base64Encode(sb.ToString()));
             }
             else
             {
-                await _updateView?.Invoke(EViewAction.SetClipboardData, sb.ToString());
+                await SetClipboardDataInteraction.Handle(sb.ToString());
             }
             NoticeManager.Instance.SendMessage(ResUI.BatchExportURLSuccessfully);
         }
@@ -1286,7 +1368,7 @@ public class ProfilesViewModel : MyReactiveObject
 
         if (!result.IsNullOrEmpty())
         {
-            await _updateView?.Invoke(EViewAction.SetClipboardData, result);
+            await SetClipboardDataInteraction.Handle(result);
             NoticeManager.Instance.SendMessage(ResUI.BatchExportURLSuccessfully);
         }
         else
@@ -1304,6 +1386,11 @@ public class ProfilesViewModel : MyReactiveObject
         await EditSubAsync(true);
     }
 
+    public async Task EditCurrentSubscription()
+    {
+        await EditSubAsync(false);
+    }
+
     private async Task EditSubAsync(bool blNew)
     {
         SubItem item;
@@ -1319,7 +1406,8 @@ public class ProfilesViewModel : MyReactiveObject
                 return;
             }
         }
-        if (await _updateView?.Invoke(EViewAction.SubEditWindow, item) == true)
+        var subEditViewModel = new SubEditViewModel(item);
+        if (await AppManager.Instance.WindowDialog.ShowDialogAsync(subEditViewModel) == true)
         {
             if (blNew && item.Id.IsNotEmpty())
             {
@@ -1342,7 +1430,7 @@ public class ProfilesViewModel : MyReactiveObject
             return;
         }
 
-        if (await _updateView?.Invoke(EViewAction.ShowYesNo, null) == false)
+        if (await ShowYesNoInteraction.Handle(ResUI.RemoveServer) == false)
         {
             return;
         }
