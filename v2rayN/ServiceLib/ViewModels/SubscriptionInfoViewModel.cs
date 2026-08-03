@@ -47,6 +47,15 @@ public class SubscriptionInfoViewModel : MyReactiveObject
     [Reactive]
     public bool CanContactSupport { get; set; }
 
+    [Reactive]
+    public string ActiveNodeName { get; set; } = "未选择节点";
+
+    [Reactive]
+    public string CurrentDelay { get; set; } = "未测速";
+
+    [Reactive]
+    public string SystemProxyStatus { get; set; } = "未开启";
+
     public ReactiveCommand<Unit, Unit> OpenSupportCmd { get; }
     public ReactiveCommand<Unit, Unit> OneClickNetworkSetupCmd { get; }
     public ReactiveCommand<Unit, Unit> ContactSupportCmd { get; }
@@ -81,10 +90,27 @@ public class SubscriptionInfoViewModel : MyReactiveObject
             .AsObservable()
             .ObserveOn(RxSchedulers.MainThreadScheduler)
             .Subscribe(async _ => await Refresh(_config.SubIndexId));
+        AppEvents.ProfilesRefreshRequested
+            .AsObservable()
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
+            .Subscribe(async _ => await RefreshRuntimeStatus());
         AppEvents.NetworkAvailabilityChanged
             .AsObservable()
             .ObserveOn(RxSchedulers.MainThreadScheduler)
-            .Subscribe(ApplyNetworkStatus);
+            .Subscribe(async info =>
+            {
+                ApplyNetworkStatus(info);
+                await RefreshRuntimeStatus();
+            });
+
+        StatusBarViewModel.Instance
+            .WhenAnyValue(x => x.SystemProxySelected)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
+            .Subscribe(async _ => await RefreshRuntimeStatus());
+        StatusBarViewModel.Instance
+            .WhenAnyValue(x => x.SelectedServer)
+            .ObserveOn(RxSchedulers.MainThreadScheduler)
+            .Subscribe(async _ => await RefreshRuntimeStatus());
 
         _ = Refresh(_config.SubIndexId);
     }
@@ -124,6 +150,7 @@ public class SubscriptionInfoViewModel : MyReactiveObject
             LastUpdated = "尚未更新";
             SupportUrl = string.Empty;
             HasSupportUrl = false;
+            await RefreshRuntimeStatus();
             return;
         }
 
@@ -161,6 +188,35 @@ public class SubscriptionInfoViewModel : MyReactiveObject
 
         SupportUrl = NormalizeSupportUrl(item.SupportUrl);
         HasSupportUrl = SupportUrl.IsNotEmpty();
+        await RefreshRuntimeStatus();
+    }
+
+    private async Task RefreshRuntimeStatus()
+    {
+        var profile = _config.IndexId.IsNotEmpty()
+            ? await AppManager.Instance.GetProfileItem(_config.IndexId)
+            : null;
+
+        ActiveNodeName = profile?.Remarks.IsNotEmpty() == true
+            ? profile.Remarks
+            : "未选择节点";
+
+        var profileExs = await ProfileExManager.Instance.GetProfileExs();
+        var delay = profileExs.FirstOrDefault(item => item.IndexId == _config.IndexId)?.Delay ?? 0;
+        CurrentDelay = delay switch
+        {
+            > 0 => $"{delay} ms",
+            < 0 => "不可用",
+            _ => "未测速"
+        };
+
+        SystemProxyStatus = _config.SystemProxyItem.SysProxyType switch
+        {
+            ESysProxyType.ForcedChange => "自动配置系统代理",
+            ESysProxyType.Pac => "PAC 模式",
+            ESysProxyType.Unchanged => "保持系统设置",
+            _ => "未开启"
+        };
     }
 
     private static string NormalizeSupportUrl(string? value)
